@@ -248,6 +248,11 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 Mesh solidMesh = GenerateSolidMesh(secondaryVertices, solidFaces);
                 if (solidMesh != null)
                 {
+                    // For Square and Circle, make the mesh double-sided.
+                    if (solid == PlatonicSolid.Square || solid == PlatonicSolid.Circle)
+                    {
+                        solidMesh = MakeMeshDoubleSided(solidMesh);
+                    }
                     // Draw the solid faces using the secondary face fill color.
                     Gizmos.color = secondaryFaceFillColor;
                     Gizmos.DrawMesh(solidMesh);
@@ -1176,13 +1181,39 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 for (int i = 0; i < circleVertexCount; i++)
                     indices[i] = i;
                 faces.Add(indices);
-                // If drawing the secondary wireframe for Circle, reverse the order to flip the face.
-                if (secondary)
-                    System.Array.Reverse(indices);
                 break;
         }
         return faces;
     }
+
+    /// <summary>
+    /// Makes a mesh double-sided by appending reversed triangles to the existing triangle list.
+    /// This ensures that both the front and back faces are rendered.
+    /// </summary>
+    /// <param name="mesh">The mesh to modify.</param>
+    /// <returns>The modified mesh with double-sided faces.</returns>
+    private Mesh MakeMeshDoubleSided(Mesh mesh)
+    {
+        int[] originalTriangles = mesh.triangles;
+        int triangleCount = originalTriangles.Length;
+        int[] doubleTriangles = new int[triangleCount * 2];
+        // Copy the original triangles.
+        for (int i = 0; i < triangleCount; i++)
+        {
+            doubleTriangles[i] = originalTriangles[i];
+        }
+        // For each triangle, add a reversed triangle.
+        for (int i = 0; i < triangleCount; i += 3)
+        {
+            doubleTriangles[triangleCount + i] = originalTriangles[i];
+            doubleTriangles[triangleCount + i + 1] = originalTriangles[i + 2];
+            doubleTriangles[triangleCount + i + 2] = originalTriangles[i + 1];
+        }
+        mesh.triangles = doubleTriangles;
+        mesh.RecalculateNormals();
+        return mesh;
+    }
+
 
     #endregion
 }
