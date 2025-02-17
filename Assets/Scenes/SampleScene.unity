@@ -455,10 +455,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 13b40136517b9f444a20d2408c53570f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  solid: 6
+  solid: 5
   scale: 1
+  drawWireframe: 1
   wireframeColor: {r: 1, g: 1, b: 1, a: 1}
-  drawWireframe: 0
+  drawSecondaryWireframe: 1
+  secondaryScale: 0.95
+  secondaryFaceFillColor: {r: 0, g: 0, b: 0, a: 0.5}
+  secondaryWireframeEdgeColor: {r: 0, g: 0, b: 0, a: 1}
   spherePointCount: 26
   sphereRadius: 0.1
   sphereSizeIncrement: 0
@@ -467,7 +471,7 @@ MonoBehaviour:
   useAlternateAlphabet: 0
   alphabetAZ: ABCDEFGHIJKLMNOPQRSTUVWXYZ
   alphabetEQ: ESIARNTOLCDUGPMHBYFVKWZXJQ
-  activeLettersFilter: i am loved
+  activeLettersFilter: 
   obfFlip: 0
   obfRotate: 0
   obfRotateOffset: 0
@@ -476,16 +480,16 @@ MonoBehaviour:
   obfReverse: 0
   obfShift: 0
   obfShiftOffset: 0
-  obfDisemvowel: 1
+  obfDisemvowel: 0
   obfSqueeze: 1
   obfDeduplicate: 1
   obfRearrange: 0
-  drawEndpointsOnly: 1
-  drawLabels: 0
+  drawEndpointsOnly: 0
+  drawLabels: 1
   candidateSubdivision: 10
   cylinderRadius: 0.01
   connectionSetting: 0
-  startingVertexIndex: 17
+  startingVertexIndex: 0
   spiralProximityWeight: 0.3
 --- !u!4 &1063239217
 Transform:
