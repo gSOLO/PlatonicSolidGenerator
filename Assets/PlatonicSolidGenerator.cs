@@ -1,5 +1,5 @@
 ﻿#if UNITY_EDITOR
-using UnityEditor;  // Needed for drawing labels in the Unity Editor
+using UnityEditor;  // Needed for drawing labels with Handles in the Unity Editor
 #endif
 using UnityEngine;
 using System.Collections.Generic;
@@ -41,44 +41,60 @@ public enum ConnectionSetting
 #region PlatonicSolidGizmo Class
 
 /// <summary>
-/// PlatonicSolidGizmo is a MonoBehaviour that draws a wireframe of a chosen Platonic (or pseudo‑Platonic) solid.
-/// It also generates a cloud of sphere points distributed over the solid’s faces,
-/// maps letters (from a specified alphabet) to these points, processes an input string (activeLettersFilter)
-/// via various obfuscation methods to filter the sphere chain, and draws connecting cylinders between
-/// the selected (active) sphere points. Optionally, only the endpoints are drawn, and labels are rendered.
-/// A label below the solid displays the processed active filter.
+/// PlatonicSolidGizmo is a MonoBehaviour that renders a Platonic (or pseudo‑Platonic) solid in the Unity Editor.
+/// It draws a primary wireframe and a secondary wireframe, where the secondary wireframe
+/// is rendered as a filled mesh with independently specified face fill and edge colors.
+/// Additionally, it generates a cloud of sphere points on the solid's faces, maps letters to these points,
+/// processes an input string (activeLettersFilter) via various obfuscation methods, and draws connecting cylinders
+/// between the "active" sphere points. Labels can be drawn at each sphere and below the solid.
 /// </summary>
 public class PlatonicSolidGizmo : MonoBehaviour
 {
     #region Public Variables
 
+    // ----- Solid Settings -----
     [Header("Solid Settings")]
     [Tooltip("Choose which Platonic solid to display")]
     public PlatonicSolid solid = PlatonicSolid.Tetrahedron;
     [Tooltip("Uniform scale for the solid")]
-    public float scale = 1f;  // Scales all vertices of the solid
+    public float scale = 1f;  // Scale applied to the primary solid's vertices
 
+    // ----- Primary Wireframe Options -----
     [Header("Wireframe Options")]
+    [Tooltip("Toggle primary wireframe drawing on or off")]
+    public bool drawWireframe = true;  // Enables/disables drawing the primary wireframe
     [Tooltip("Color of the primary wireframe of the Platonic solid")]
     public Color wireframeColor = Color.green;
-    [Tooltip("Toggle primary wireframe drawing on or off")]
-    public bool drawWireframe = true;  // Enable/disable drawing of the primary wireframe
 
+    // ----- Secondary Wireframe Options -----
+    [Header("Secondary Wireframe Options")]
+    [Tooltip("Toggle drawing of the secondary (solid) wireframe")]
+    public bool drawSecondaryWireframe = true;  // Enables secondary wireframe drawing
+    [Tooltip("Uniform scale for the secondary wireframe (independent of the main solid scale)")]
+    public float secondaryScale = 1.0f;  // Scale factor for the secondary wireframe
+    [Tooltip("Fill color for the secondary solid faces")]
+    public Color secondaryFaceFillColor = new Color(1f, 1f, 1f, 0.5f);  // Face fill color
+    [Tooltip("Color for the secondary wireframe edges")]
+    public Color secondaryWireframeEdgeColor = Color.black;  // Edge (line) color for secondary wireframe
+
+    // ----- Sphere Cloud Settings -----
     [Header("Sphere Cloud Settings")]
     [Tooltip("Exact total number of spheres to distribute over the faces")]
-    public int spherePointCount = 50;
+    public int spherePointCount = 50;  // Number of sphere points to generate
     [Tooltip("Base radius for the first sphere")]
     public float sphereRadius = 0.05f;
     [Tooltip("Additional radius added per sphere (each subsequent sphere is larger)")]
     public float sphereSizeIncrement = 0.01f;
 
+    // ----- Sphere Color Gradient -----
     [Header("Sphere Color Gradient")]
     [Tooltip("Color (with opacity) for the first sphere")]
     public Color startSphereColor = new Color(1f, 0f, 0f, 1f);
     [Tooltip("Color (with opacity) for the last sphere")]
     public Color endSphereColor = new Color(0f, 0f, 1f, 0.5f);
-    // The gradient is computed along the chain of sphere points, spanning either all or only active points.
+    // A gradient is applied along the chain of sphere points.
 
+    // ----- Letter Mapping Settings -----
     [Header("Letter Mapping Settings")]
     [Tooltip("If false, letters are assigned in A–Z order; if true, use alternate ordering")]
     public bool useAlternateAlphabet = false;
@@ -88,10 +104,11 @@ public class PlatonicSolidGizmo : MonoBehaviour
     public string alphabetEQ = "ESIARNTOLCDUGPMHBYFVKWZXJQ";
     [Tooltip("Active letter chain. Type a sentence here which will be processed (via obfuscation methods) " +
              "to produce the chain of active letters. For example, 'AGPA' selects spheres with A, then G, then P, then A (even if letters repeat)")]
-    public string activeLettersFilter = "";
+    public string activeLettersFilter = "";  // User input for active chain filtering
 
+    // ----- Active Letters Obfuscation Settings -----
     [Header("Active Letters Obfuscation Settings")]
-    // These booleans enable various string transformation methods applied to the activeLettersFilter.
+    // Toggles for string transformation methods.
     [Tooltip("Toggle the 'Flip' method (reverses the word order) on or off")]
     public bool obfFlip = false;
     [Tooltip("Toggle the 'Rotate' method (rotates the words) on or off")]
@@ -117,23 +134,28 @@ public class PlatonicSolidGizmo : MonoBehaviour
     [Tooltip("Toggle the 'Rearrange' method on or off")]
     public bool obfRearrange = false;
 
+    // ----- Endpoint Options -----
     [Header("Endpoint Options")]
     [Tooltip("When enabled, only the first and last spheres are drawn (the last is drawn as a cube). " +
              "Intermediate sphere points are not drawn, but labels are still placed at these points.")]
     public bool drawEndpointsOnly = false;
 
+    // ----- Label Options -----
     [Header("Label Options")]
     [Tooltip("Toggle all labels (sphere labels, processed filter label, etc.) on or off")]
     public bool drawLabels = true;
 
+    // ----- Candidate Generation Settings -----
     [Header("Candidate Generation Settings")]
     [Tooltip("Subdivision level for candidate point generation on each face (for Circle, clamped to determine vertex count)")]
     public int candidateSubdivision = 10;
 
+    // ----- Cylinder Settings -----
     [Header("Cylinder Settings")]
     [Tooltip("Radius for the connecting cylinders between sphere centers")]
     public float cylinderRadius = 0.05f;
 
+    // ----- Connection Ordering Settings -----
     [Header("Connection Ordering Settings")]
     [Tooltip("Combined connection setting that determines how sphere points are ordered. " +
              "Legacy options (TopToBottom, etc.) sort by coordinate; spiral options (ClockwiseOut/In, CounterclockwiseOut/In) produce a spiral. " +
@@ -148,7 +170,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     #region Private Variables
 
-    // Cached cylinder mesh used for drawing connecting cylinders.
+    // Cached cylinder mesh for drawing connecting cylinders.
     private static Mesh cylinderMesh;
 
     #endregion
@@ -156,33 +178,34 @@ public class PlatonicSolidGizmo : MonoBehaviour
     #region OnDrawGizmos
 
     /// <summary>
-    /// Unity calls OnDrawGizmos to render custom gizmos in the Editor.
-    /// This method:
-    /// 1. Retrieves and transforms the vertices of the chosen solid.
-    /// 2. Optionally draws the primary wireframe.
-    /// 3. Generates candidate sphere points on the solid's faces.
-    /// 4. Orders the sphere points based on the selected connection setting.
-    /// 5. Maps letters to each sphere point.
-    /// 6. Processes the active letter filter to create an "active chain" of points.
-    /// 7. Computes a gradient for the sphere colors.
-    /// 8. Draws the spheres (or only endpoints) and their labels.
-    /// 9. Draws connecting cylinders between consecutive visible sphere points.
-    /// 10. Draws a label below the solid with the processed active filter.
+    /// OnDrawGizmos is called by Unity to render custom gizmos in the Scene view.
+    /// It performs the following steps:
+    /// 1. Retrieves and transforms primary vertices.
+    /// 2. Draws the primary wireframe.
+    /// 3. Draws the secondary wireframe (first filling faces, then drawing edge lines).
+    /// 4. Generates candidate sphere points on the solid’s faces.
+    /// 5. Orders the sphere points based on the connection setting.
+    /// 6. Maps letters to each sphere point.
+    /// 7. Processes the active letter filter to build an active chain of sphere points.
+    /// 8. Assigns a color gradient to the sphere points.
+    /// 9. Draws the sphere points (or endpoints only) and labels.
+    /// 10. Draws connecting cylinders between consecutive visible sphere points.
+    /// 11. Draws a label below the solid displaying the processed active filter.
     /// </summary>
     private void OnDrawGizmos()
     {
-        // 1. Retrieve and transform vertices for the primary solid.
+        // --- Step 1: Retrieve and transform primary vertices ---
         Vector3[] vertices = GetVertices(solid);
         if (vertices == null || vertices.Length == 0)
             return;
-        // Apply uniform scale and position offset.
+        // Apply primary scale and position.
         for (int i = 0; i < vertices.Length; i++)
             vertices[i] = transform.position + vertices[i] * scale;
 
-        // 2. Draw the primary wireframe if enabled.
+        // --- Step 2: Draw the primary wireframe ---
         if (drawWireframe)
         {
-            // Determine a tolerance based on the smallest edge length.
+            // Determine the smallest edge length for drawing a simple wireframe.
             float minEdgeLength = float.MaxValue;
             for (int i = 0; i < vertices.Length; i++)
             {
@@ -193,9 +216,9 @@ public class PlatonicSolidGizmo : MonoBehaviour
                         minEdgeLength = d;
                 }
             }
-            float tol = 0.01f;  // Tolerance to decide if an edge should be drawn.
+            float tol = 0.01f;
             Gizmos.color = wireframeColor;
-            // Draw lines between vertices that are approximately the smallest edge length apart.
+            // Draw lines between vertices that are approximately the minimum edge length apart.
             for (int i = 0; i < vertices.Length; i++)
             {
                 for (int j = i + 1; j < vertices.Length; j++)
@@ -207,53 +230,87 @@ public class PlatonicSolidGizmo : MonoBehaviour
             }
         }
 
-        // 3. Generate the final set of sphere points.
+        // --- Step 3: Draw the secondary wireframe (filled faces + edge lines) ---
+        if (drawSecondaryWireframe)
+        {
+            // Retrieve secondary vertices with independent scaling.
+            Vector3[] secondaryVertices = GetVertices(solid, true);
+            if (secondaryVertices != null && secondaryVertices.Length > 0)
+            {
+                // Apply secondary scale and position.
+                for (int i = 0; i < secondaryVertices.Length; i++)
+                    secondaryVertices[i] = transform.position + secondaryVertices[i] * secondaryScale;
+
+                // Get the face definitions for the secondary wireframe.
+                List<int[]> solidFaces = GetFaces(solid, true);
+
+                // Generate a solid mesh (for face fill) from the secondary vertices.
+                Mesh solidMesh = GenerateSolidMesh(secondaryVertices, solidFaces);
+                if (solidMesh != null)
+                {
+                    // Draw the solid faces using the secondary face fill color.
+                    Gizmos.color = secondaryFaceFillColor;
+                    Gizmos.DrawMesh(solidMesh);
+                }
+                // Draw the wireframe edges over the secondary mesh.
+                Gizmos.color = secondaryWireframeEdgeColor;
+                foreach (var face in solidFaces)
+                {
+                    // Draw a line loop for each face.
+                    for (int i = 0; i < face.Length; i++)
+                    {
+                        Vector3 v0 = secondaryVertices[face[i]];
+                        Vector3 v1 = secondaryVertices[face[(i + 1) % face.Length]];
+                        Gizmos.DrawLine(v0, v1);
+                    }
+                }
+            }
+        }
+
+        // --- Step 4: Generate candidate sphere points ---
         List<Vector3> finalPoints = new List<Vector3>();
-        // If the sphere point count equals the number of vertices, use vertices directly.
         if (spherePointCount == vertices.Length)
         {
+            // If the number of sphere points equals the number of vertices, use them directly.
             finalPoints.AddRange(vertices);
         }
         else
         {
-            // Otherwise, generate candidate points based on face subdivisions.
+            // Otherwise, generate candidate points based on face subdivision.
             List<int[]> faces = GetFaces(solid);
             if (faces == null || faces.Count == 0)
                 return;
             List<Vector3> candidatePoints = new List<Vector3>();
-            // For each face, generate candidate points over its area.
+            // For each face, generate candidate points using barycentric subdivision.
             foreach (var faceIndices in faces)
             {
                 Vector3[] faceVerts = new Vector3[faceIndices.Length];
                 for (int i = 0; i < faceIndices.Length; i++)
                     faceVerts[i] = vertices[faceIndices[i]];
-                // Generate candidate points using a barycentric grid (fan‑triangulation method).
                 List<Vector3> faceCandidates = GenerateCandidatePointsOnPolygon(faceVerts, candidateSubdivision);
                 candidatePoints.AddRange(faceCandidates);
             }
-            // Remove points that are nearly duplicates.
             candidatePoints = RemoveDuplicatePoints(candidatePoints, 0.0001f);
             if (candidatePoints.Count < spherePointCount)
             {
                 Debug.LogWarning("Not enough candidate points generated. Increase candidateSubdivision.");
                 spherePointCount = candidatePoints.Count;
             }
-            // Use farthest point sampling to evenly distribute points.
             if (spherePointCount > vertices.Length)
                 finalPoints = FarthestPointSamplingWithPreselected(candidatePoints, spherePointCount, new List<Vector3>(vertices));
             else
                 finalPoints = FarthestPointSampling(candidatePoints, spherePointCount, vertices);
         }
 
-        // 4. Order the sphere points according to the connection setting.
+        // --- Step 5: Order the sphere points for connection ---
         List<Vector3> orderedPoints = new List<Vector3>();
-        // Legacy coordinate-based ordering.
         if (connectionSetting == ConnectionSetting.TopToBottom ||
             connectionSetting == ConnectionSetting.BottomToTop ||
             connectionSetting == ConnectionSetting.LeftToRight ||
             connectionSetting == ConnectionSetting.RightToLeft ||
             connectionSetting == ConnectionSetting.Random)
         {
+            // Legacy coordinate-based ordering.
             orderedPoints = new List<Vector3>(finalPoints);
             const float orderTol = 0.001f;
             switch (connectionSetting)
@@ -275,7 +332,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                         (Mathf.Abs(a.x - b.x) < orderTol) ? a.y.CompareTo(b.y) : b.x.CompareTo(a.x));
                     break;
                 case ConnectionSetting.Random:
-                    // Randomly shuffle the points.
+                    // Random shuffle.
                     for (int i = 0; i < orderedPoints.Count; i++)
                     {
                         int rnd = UnityEngine.Random.Range(i, orderedPoints.Count);
@@ -285,7 +342,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     }
                     break;
             }
-            // Apply the starting vertex offset by rotating the list.
+            // Rotate the ordered list based on startingVertexIndex.
             int startIndex = Mathf.Clamp(startingVertexIndex, 0, orderedPoints.Count - 1);
             List<Vector3> rotatedPoints = new List<Vector3>();
             for (int i = startIndex; i < orderedPoints.Count; i++)
@@ -304,7 +361,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
             float maxR = 0f;
             List<(Vector3 pt, float r, float theta)> polarList = new List<(Vector3, float, float)>();
-            // Compute polar coordinates for each candidate point relative to the center.
             foreach (Vector3 pt in finalPoints)
             {
                 Vector3 d = pt - center;
@@ -318,7 +374,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
             bool clockwise = (connectionSetting == ConnectionSetting.ClockwiseOut || connectionSetting == ConnectionSetting.ClockwiseIn);
             bool spiralOut = (connectionSetting == ConnectionSetting.ClockwiseOut || connectionSetting == ConnectionSetting.CounterclockwiseOut);
 
-            // Sort the points based on a combination of their angle and normalized radius.
             polarList.Sort((a, b) =>
             {
                 float angleA = clockwise ? (2 * Mathf.PI - a.theta) : a.theta;
@@ -332,9 +387,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 return keyA.CompareTo(keyB);
             });
 
-            // Create ordered list from the sorted polar coordinates.
             List<Vector3> sortedByAngle = polarList.Select(tuple => tuple.pt).ToList();
-            // Optionally rotate the order based on starting vertex index.
             if (startingVertexIndex > 0 && startingVertexIndex < sortedByAngle.Count)
             {
                 List<Vector3> rotated = new List<Vector3>();
@@ -347,18 +400,16 @@ public class PlatonicSolidGizmo : MonoBehaviour
             orderedPoints = sortedByAngle;
         }
 
-        // 5. Map letters to each ordered sphere point.
+        // --- Step 6: Map letters to each ordered sphere point ---
         int pointCount = orderedPoints.Count;
         string[] letterMapping = new string[pointCount];
-        // Initialize the mapping array with empty strings.
         for (int i = 0; i < pointCount; i++)
             letterMapping[i] = "";
-        // Select which alphabet to use and optionally remove vowels.
+        // Choose which alphabet to use; optionally remove vowels.
         string effectiveAlphabet = useAlternateAlphabet ? alphabetEQ : alphabetAZ;
         if (obfDisemvowel)
             effectiveAlphabet = effectiveAlphabet.Disemvowel();
         int effectiveAlphabetLength = effectiveAlphabet.Length;
-        // If there are more letters than points, wrap around; if fewer, distribute evenly.
         if (pointCount < effectiveAlphabetLength)
         {
             for (int i = 0; i < effectiveAlphabetLength; i++)
@@ -376,22 +427,19 @@ public class PlatonicSolidGizmo : MonoBehaviour
             }
         }
 
-        // 6. Process the activeLettersFilter string through the obfuscation methods.
+        // --- Step 7: Process the active letter filter ---
         string processedFilter = ProcessActiveLettersFilter(activeLettersFilter);
 
-        // 7. Build the active chain of sphere point indices based on the processed filter.
+        // --- Step 8: Build the active chain of sphere point indices ---
         List<int> activeChain = new List<int>();
         if (string.IsNullOrEmpty(processedFilter))
         {
-            // If no filter is provided, include all points.
             for (int i = 0; i < pointCount; i++)
                 activeChain.Add(i);
         }
         else
         {
             int currentIndex = 0;
-            // For each character in the processed filter, search through the ordered points (wrapping if needed)
-            // and add the index of the first sphere whose mapped letter contains the character.
             for (int f = 0; f < processedFilter.Length; f++)
             {
                 char c = processedFilter[f];
@@ -408,12 +456,11 @@ public class PlatonicSolidGizmo : MonoBehaviour
             }
         }
 
-        // 8. Build lists of visible points and assign gradient colors.
+        // --- Step 9: Build lists of visible points and assign a color gradient ---
         List<Vector3> visiblePoints = new List<Vector3>();
         List<Color> visibleColors = new List<Color>();
         if (string.IsNullOrEmpty(activeLettersFilter))
         {
-            // Compute a color gradient over all points.
             Color[] sphereColors = new Color[pointCount];
             for (int i = 0; i < pointCount; i++)
             {
@@ -428,7 +475,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
         }
         else
         {
-            // When a filter is active, compute the gradient only for the active (visible) points.
             int visibleCount = activeChain.Count;
             for (int i = 0; i < visibleCount; i++)
             {
@@ -441,19 +487,17 @@ public class PlatonicSolidGizmo : MonoBehaviour
             }
         }
 
-        // 9. Draw the sphere points and labels.
+        // --- Step 10: Draw the sphere points and labels ---
         for (int i = 0; i < visiblePoints.Count; i++)
         {
             float r = sphereRadius + (activeChain[i]) * sphereSizeIncrement;
             if (!drawEndpointsOnly)
             {
-                // Draw each sphere normally.
                 Gizmos.color = visibleColors[i];
                 Gizmos.DrawSphere(visiblePoints[i], r);
             }
             else
             {
-                // When endpoints only, draw only the first sphere as a sphere and the last as a cube.
                 if (i == 0)
                 {
                     Gizmos.color = visibleColors[i];
@@ -466,13 +510,12 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 }
             }
 #if UNITY_EDITOR
-            // Draw labels above each active sphere if labels are enabled.
             if (drawLabels)
                 Handles.Label(visiblePoints[i] + Vector3.up * (r * 1.5f), letterMapping[activeChain[i]]);
 #endif
         }
 
-        // 10. Draw connecting cylinders between consecutive visible sphere points.
+        // --- Step 11: Draw connecting cylinders between consecutive visible sphere points ---
         EnsureCylinderMesh();
         for (int i = 0; i < visiblePoints.Count - 1; i++)
         {
@@ -481,16 +524,14 @@ public class PlatonicSolidGizmo : MonoBehaviour
             Vector3 direction = p1 - p0;
             float distance = direction.magnitude;
             Vector3 mid = (p0 + p1) / 2f;
-            // Determine the rotation needed so the cylinder aligns between the two sphere centers.
             Quaternion rotation = Quaternion.FromToRotation(Vector3.up, direction);
-            // Scale the cylinder to the correct height (half the distance) and adjust its radius.
             Vector3 cylScale = new Vector3(cylinderRadius / 0.5f, distance / 2f, cylinderRadius / 0.5f);
             Gizmos.color = visibleColors[i + 1];
             Gizmos.DrawMesh(cylinderMesh, mid, rotation, cylScale);
         }
 
 #if UNITY_EDITOR
-        // 11. Draw a centered label below the solid that displays the processed active filter.
+        // --- Step 12: Draw a centered label below the solid displaying the processed active filter ---
         if (drawLabels)
         {
             Vector3 min = vertices[0];
@@ -513,14 +554,13 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     /// <summary>
     /// Processes the activeLettersFilter string by applying a series of obfuscation methods.
-    /// The methods are applied in the following order:
-    /// ToUpper (always), then optionally: Flip, Rotate, CutUp, RemoveWhitespace, Reverse, Shift, Disemvowel, Squeeze, Deduplicate, and Rearrange.
+    /// Methods are applied in a fixed order: ToUpper (always), then optionally:
+    /// Flip, Rotate, CutUp, RemoveWhitespace, Reverse, Shift, Disemvowel, Squeeze, Deduplicate, and Rearrange.
     /// </summary>
     /// <param name="filter">The original filter string input by the user.</param>
-    /// <returns>The processed (obfuscated) string.</returns>
+    /// <returns>The transformed (obfuscated) string.</returns>
     private string ProcessActiveLettersFilter(string filter)
     {
-        // If the filter is empty, return it immediately.
         if (string.IsNullOrEmpty(filter))
             return filter;
         // Always convert to uppercase.
@@ -554,28 +594,104 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     /// <summary>
     /// Caches a cylinder mesh based on Unity's built-in Cylinder primitive.
-    /// This mesh is used to draw the connecting cylinders.
+    /// Creates a temporary Cylinder object to obtain its mesh, then destroys it.
     /// </summary>
     private static void EnsureCylinderMesh()
     {
         if (cylinderMesh == null)
         {
-            // Create a temporary cylinder primitive to access its mesh.
             GameObject temp = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             cylinderMesh = temp.GetComponent<MeshFilter>().sharedMesh;
-            // Immediately destroy the temporary GameObject.
             DestroyImmediate(temp);
         }
     }
 
     /// <summary>
+    /// Generates a solid mesh for the secondary wireframe by fan‑triangulating each face.
+    /// This mesh is used to fill the faces with a solid color.
+    /// </summary>
+    /// <param name="vertices">Array of secondary vertices (transformed with secondaryScale and position).</param>
+    /// <param name="faces">List of faces (each face is defined by an array of vertex indices).</param>
+    /// <returns>A Mesh representing the secondary solid's faces.</returns>
+    private Mesh GenerateSolidMesh(Vector3[] vertices, List<int[]> faces)
+    {
+        Mesh mesh = new Mesh();
+        mesh.name = "SecondaryWireframeMesh";
+        mesh.vertices = vertices;
+
+        List<int> triangles = new List<int>();
+
+        // For each face, sort the indices and then perform fan‑triangulation.
+        foreach (int[] face in faces)
+        {
+            if (face.Length < 3)
+                continue;
+
+            // Sort the face indices to ensure consistent winding.
+            int[] sortedFace = SortFaceIndices(face, vertices);
+
+            // Fan-triangulation: from the first vertex, create triangles with subsequent pairs.
+            for (int i = 1; i < sortedFace.Length - 1; i++)
+            {
+                triangles.Add(sortedFace[0]);
+                triangles.Add(sortedFace[i]);
+                triangles.Add(sortedFace[i + 1]);
+            }
+        }
+
+        mesh.triangles = triangles.ToArray();
+        mesh.RecalculateNormals();
+        return mesh;
+    }
+
+    /// <summary>
+    /// Sorts the vertex indices of a face into a consistent (e.g., counterclockwise) winding order.
+    /// Computes the face centroid and a representative normal, then sorts based on the angle between
+    /// a reference direction (from the centroid to the first vertex) and each vertex's direction.
+    /// </summary>
+    /// <param name="face">Array of vertex indices defining the face.</param>
+    /// <param name="vertices">Array of vertices.</param>
+    /// <returns>An array of vertex indices sorted into a consistent winding order.</returns>
+    private int[] SortFaceIndices(int[] face, Vector3[] vertices)
+    {
+        List<Vector3> faceVerts = new List<Vector3>();
+        foreach (int index in face)
+            faceVerts.Add(vertices[index]);
+
+        // Compute the centroid of the face.
+        Vector3 centroid = Vector3.zero;
+        foreach (Vector3 v in faceVerts)
+            centroid += v;
+        centroid /= faceVerts.Count;
+
+        // Compute a representative normal from the first three vertices.
+        Vector3 normal = Vector3.zero;
+        if (faceVerts.Count >= 3)
+            normal = Vector3.Cross(faceVerts[1] - faceVerts[0], faceVerts[2] - faceVerts[0]).normalized;
+
+        // Use the direction from the centroid to the first vertex as a reference.
+        Vector3 refDir = (faceVerts[0] - centroid).normalized;
+
+        List<(int index, float angle)> indexedAngles = new List<(int, float)>();
+        for (int i = 0; i < faceVerts.Count; i++)
+        {
+            Vector3 dir = (faceVerts[i] - centroid).normalized;
+            float angle = Mathf.Atan2(Vector3.Dot(Vector3.Cross(refDir, dir), normal),
+                                      Vector3.Dot(refDir, dir));
+            indexedAngles.Add((face[i], angle));
+        }
+        indexedAngles.Sort((a, b) => a.angle.CompareTo(b.angle));
+        return indexedAngles.Select(pair => pair.index).ToArray();
+    }
+
+    /// <summary>
     /// Standard farthest point sampling.
-    /// Selects exactly 'count' points from the candidate list by starting with one candidate (preferably near an original vertex)
-    /// and repeatedly selecting the candidate that is farthest from the already selected points.
+    /// Selects 'count' points from a list of candidate points by iteratively choosing the candidate farthest
+    /// from the already selected points. Starts with a candidate near an original vertex, if possible.
     /// </summary>
     /// <param name="candidates">List of candidate points.</param>
-    /// <param name="count">The desired number of points to select.</param>
-    /// <param name="originalVertices">The original solid vertices (used to seed the selection).</param>
+    /// <param name="count">Desired number of points.</param>
+    /// <param name="originalVertices">Original vertices of the solid (used for seeding).</param>
     /// <returns>A list of evenly distributed points.</returns>
     private List<Vector3> FarthestPointSampling(List<Vector3> candidates, int count, Vector3[] originalVertices)
     {
@@ -585,7 +701,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
             return selected;
         float tol = 0.0001f;
         int initialIndex = -1;
-        // Try to find a candidate that is near one of the original vertices.
         for (int i = 0; i < n; i++)
         {
             foreach (Vector3 v in originalVertices)
@@ -599,15 +714,12 @@ public class PlatonicSolidGizmo : MonoBehaviour
             if (initialIndex != -1)
                 break;
         }
-        // If none is found, choose one at random.
         if (initialIndex == -1)
             initialIndex = UnityEngine.Random.Range(0, n);
         selected.Add(candidates[initialIndex]);
-        // Initialize the minimum distance array.
         float[] minDist = new float[n];
         for (int i = 0; i < n; i++)
             minDist[i] = Vector3.Distance(candidates[i], selected[0]);
-        // Iteratively add the farthest candidate.
         while (selected.Count < count)
         {
             int bestIndex = -1;
@@ -626,7 +738,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 break;
             Vector3 bestCandidate = candidates[bestIndex];
             selected.Add(bestCandidate);
-            // Update minimum distances based on the newly added candidate.
             for (int i = 0; i < n; i++)
             {
                 float d = Vector3.Distance(candidates[i], bestCandidate);
@@ -638,13 +749,13 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     /// <summary>
-    /// Modified farthest point sampling that includes a preselected set of points (e.g. the original vertices)
-    /// and then fills the remaining points using farthest point sampling.
+    /// Modified farthest point sampling that includes a preselected set of points,
+    /// then fills in additional points using farthest point sampling.
     /// </summary>
     /// <param name="candidates">List of candidate points.</param>
     /// <param name="count">Total desired number of points.</param>
-    /// <param name="preselected">Points that must be included in the final set.</param>
-    /// <returns>A list of points that includes the preselected ones plus additional evenly distributed points.</returns>
+    /// <param name="preselected">Points that must be included.</param>
+    /// <returns>A list containing the preselected points plus additional evenly distributed points.</returns>
     private List<Vector3> FarthestPointSamplingWithPreselected(List<Vector3> candidates, int count, List<Vector3> preselected)
     {
         List<Vector3> selected = new List<Vector3>(preselected);
@@ -653,7 +764,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
             return selected;
         float tol = 0.0001f;
         float[] minDist = new float[n];
-        // Initialize distances based on the preselected points.
         for (int i = 0; i < n; i++)
         {
             float dmin = float.MaxValue;
@@ -665,7 +775,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
             }
             minDist[i] = dmin;
         }
-        // Add remaining points.
         while (selected.Count < count)
         {
             int bestIndex = -1;
@@ -705,24 +814,22 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     /// <summary>
     /// Generates candidate points on a polygon using fan‑triangulation.
-    /// The polygon is subdivided into triangles and a barycentric grid is generated on each triangle.
+    /// The polygon is subdivided into triangles, and a barycentric grid is generated on each triangle.
     /// </summary>
     /// <param name="polyVerts">Array of vertices defining the polygon.</param>
     /// <param name="subdivision">Number of subdivisions per triangle.</param>
-    /// <returns>A list of candidate points distributed over the polygon.</returns>
+    /// <returns>A list of candidate points over the polygon.</returns>
     private List<Vector3> GenerateCandidatePointsOnPolygon(Vector3[] polyVerts, int subdivision)
     {
         List<Vector3> points = new List<Vector3>();
         if (polyVerts.Length < 3)
             return points;
-        // A convex polygon with n vertices can be triangulated into n-2 triangles.
         int triangleCount = polyVerts.Length - 2;
         for (int i = 0; i < triangleCount; i++)
         {
             Vector3 A = polyVerts[0];
             Vector3 B = polyVerts[i + 1];
             Vector3 C = polyVerts[i + 2];
-            // For each triangle, loop over barycentric coordinates.
             for (int j = 0; j <= subdivision; j++)
             {
                 for (int k = 0; k <= subdivision - j; k++)
@@ -732,7 +839,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     float w = 1f - u - v;
                     if (w < 0)
                         continue;
-                    // Compute the point using barycentric coordinates.
                     Vector3 p = A * w + B * u + C * v;
                     points.Add(p);
                 }
@@ -745,7 +851,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
     /// Removes duplicate points from a list based on a specified tolerance.
     /// </summary>
     /// <param name="points">List of points.</param>
-    /// <param name="tolerance">Distance tolerance to consider points as duplicates.</param>
+    /// <param name="tolerance">Distance under which points are considered duplicates.</param>
     /// <returns>A list of unique points.</returns>
     private List<Vector3> RemoveDuplicatePoints(List<Vector3> points, float tolerance)
     {
@@ -768,12 +874,15 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     /// <summary>
-    /// Returns the vertices for the chosen solid.
-    /// 3D solids are defined using symmetric coordinates; Square and Circle are defined in the XY plane.
+    /// Returns the vertices for the selected solid.
+    /// For 3D solids, vertices are defined symmetrically.
+    /// For 2D shapes (Square and Circle), vertices lie in the XY plane.
+    /// The 'secondary' flag returns alternate vertex layouts for the secondary wireframe.
     /// </summary>
     /// <param name="solidType">The selected Platonic solid.</param>
+    /// <param name="secondary">If true, returns vertices for the secondary wireframe layout.</param>
     /// <returns>An array of vertices for the solid.</returns>
-    private Vector3[] GetVertices(PlatonicSolid solidType)
+    private Vector3[] GetVertices(PlatonicSolid solidType, Boolean secondary = false)
     {
         switch (solidType)
         {
@@ -808,47 +917,111 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     new Vector3( 0,  0, -1)
                 };
             case PlatonicSolid.Icosahedron:
-                float phi = (1f + Mathf.Sqrt(5f)) / 2f;
-                return new Vector3[]
+                if (!secondary)
                 {
-                    new Vector3(0,  1,  phi),
-                    new Vector3(0,  1, -phi),
-                    new Vector3(0, -1,  phi),
-                    new Vector3(0, -1, -phi),
-                    new Vector3( 1,  phi, 0),
-                    new Vector3( 1, -phi, 0),
-                    new Vector3(-1,  phi, 0),
-                    new Vector3(-1, -phi, 0),
-                    new Vector3( phi, 0,  1),
-                    new Vector3( phi, 0, -1),
-                    new Vector3(-phi, 0,  1),
-                    new Vector3(-phi, 0, -1)
-                };
+                    float phi = (1f + Mathf.Sqrt(5f)) / 2f;
+                    return new Vector3[]
+                    {
+                        new Vector3(0,  1,  phi),
+                        new Vector3(0,  1, -phi),
+                        new Vector3(0, -1,  phi),
+                        new Vector3(0, -1, -phi),
+                        new Vector3( 1,  phi, 0),
+                        new Vector3( 1, -phi, 0),
+                        new Vector3(-1,  phi, 0),
+                        new Vector3(-1, -phi, 0),
+                        new Vector3( phi, 0,  1),
+                        new Vector3( phi, 0, -1),
+                        new Vector3(-phi, 0,  1),
+                        new Vector3(-phi, 0, -1)
+                    };
+                }
+                else
+                {
+                    // Alternate layout for secondary wireframe.
+                    float a = 1.0f;
+                    float b = 0.0f;
+                    float c = (1f + Mathf.Sqrt(5f)) / 2f;
+                    return new Vector3[]
+                    {
+                        new Vector3(+b, +a, +c),
+                        new Vector3(+b, +a, -c),
+                        new Vector3(+b, -a, +c),
+                        new Vector3(+b, -a, -c),
+
+                        new Vector3(+a, +c, +b),
+                        new Vector3(+a, -c, +b),
+                        new Vector3(-a, +c, +b),
+                        new Vector3(-a, -c, +b),
+
+                        new Vector3(+c, +b, +a),
+                        new Vector3(+c, +b, -a),
+                        new Vector3(-c, +b, +a),
+                        new Vector3(-c, +b, -a)
+                    };
+                }
             case PlatonicSolid.Dodecahedron:
-                float phiD = (1f + Mathf.Sqrt(5f)) / 2f;
-                float invPhi = 1f / phiD;
-                List<Vector3> verts = new List<Vector3>();
-                verts.Add(new Vector3(1, 1, 1));
-                verts.Add(new Vector3(1, 1, -1));
-                verts.Add(new Vector3(1, -1, 1));
-                verts.Add(new Vector3(1, -1, -1));
-                verts.Add(new Vector3(-1, 1, 1));
-                verts.Add(new Vector3(-1, 1, -1));
-                verts.Add(new Vector3(-1, -1, 1));
-                verts.Add(new Vector3(-1, -1, -1));
-                verts.Add(new Vector3(0, invPhi, phiD));
-                verts.Add(new Vector3(0, invPhi, -phiD));
-                verts.Add(new Vector3(0, -invPhi, phiD));
-                verts.Add(new Vector3(0, -invPhi, -phiD));
-                verts.Add(new Vector3(invPhi, phiD, 0));
-                verts.Add(new Vector3(invPhi, -phiD, 0));
-                verts.Add(new Vector3(-invPhi, phiD, 0));
-                verts.Add(new Vector3(-invPhi, -phiD, 0));
-                verts.Add(new Vector3(phiD, 0, invPhi));
-                verts.Add(new Vector3(phiD, 0, -invPhi));
-                verts.Add(new Vector3(-phiD, 0, invPhi));
-                verts.Add(new Vector3(-phiD, 0, -invPhi));
-                return verts.ToArray();
+                if (!secondary)
+                {
+                    float phiD = (1f + Mathf.Sqrt(5f)) / 2f;
+                    float invPhi = 1f / phiD;
+                    List<Vector3> verts = new List<Vector3>();
+                    verts.Add(new Vector3(1, 1, 1));
+                    verts.Add(new Vector3(1, 1, -1));
+                    verts.Add(new Vector3(1, -1, 1));
+                    verts.Add(new Vector3(1, -1, -1));
+                    verts.Add(new Vector3(-1, 1, 1));
+                    verts.Add(new Vector3(-1, 1, -1));
+                    verts.Add(new Vector3(-1, -1, 1));
+                    verts.Add(new Vector3(-1, -1, -1));
+                    verts.Add(new Vector3(0, invPhi, phiD));
+                    verts.Add(new Vector3(0, invPhi, -phiD));
+                    verts.Add(new Vector3(0, -invPhi, phiD));
+                    verts.Add(new Vector3(0, -invPhi, -invPhi));
+                    verts.Add(new Vector3(invPhi, phiD, 0));
+                    verts.Add(new Vector3(invPhi, -phiD, 0));
+                    verts.Add(new Vector3(-invPhi, phiD, 0));
+                    verts.Add(new Vector3(-invPhi, -phiD, 0));
+                    verts.Add(new Vector3(phiD, 0, invPhi));
+                    verts.Add(new Vector3(phiD, 0, -invPhi));
+                    verts.Add(new Vector3(-phiD, 0, invPhi));
+                    verts.Add(new Vector3(-phiD, 0, -invPhi));
+                    return verts.ToArray();
+                }
+                else
+                {
+                    // Alternate layout for secondary wireframe.
+                    float a = 1.0f;
+                    float b = 0.0f;
+                    float c = (1f + Mathf.Sqrt(5f)) / 2f;
+                    float d = 1f / c;
+                    List<Vector3> verts = new List<Vector3>();
+                    verts.Add(new Vector3(+a, +a, +a));
+                    verts.Add(new Vector3(+a, +a, -a));
+                    verts.Add(new Vector3(+a, -a, +a));
+                    verts.Add(new Vector3(-a, +a, +a));
+
+                    verts.Add(new Vector3(+a, -a, -a));
+                    verts.Add(new Vector3(-a, +a, -a));
+                    verts.Add(new Vector3(-a, -a, +a));
+                    verts.Add(new Vector3(-a, -a, -a));
+
+                    verts.Add(new Vector3(+b, +d, +c));
+                    verts.Add(new Vector3(+b, +d, -c));
+                    verts.Add(new Vector3(+b, -d, +c));
+                    verts.Add(new Vector3(+b, -d, -c));
+
+                    verts.Add(new Vector3(+d, +c, +b));
+                    verts.Add(new Vector3(+d, -c, +b));
+                    verts.Add(new Vector3(-d, +c, +b));
+                    verts.Add(new Vector3(-d, -c, +b));
+
+                    verts.Add(new Vector3(+c, +b, +d));
+                    verts.Add(new Vector3(-c, +b, +d));
+                    verts.Add(new Vector3(+c, +b, -d));
+                    verts.Add(new Vector3(-c, +b, -d));
+                    return verts.ToArray();
+                }
             case PlatonicSolid.Square:
                 return new Vector3[]
                 {
@@ -858,9 +1031,10 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     new Vector3( 1, -1, 0)
                 };
             case PlatonicSolid.Circle:
+                // For Circle, determine the number of vertices from candidateSubdivision (clamped between 3 and spherePointCount).
                 int circleVertexCount = Mathf.Clamp(candidateSubdivision, 3, spherePointCount);
                 Vector3[] circleVerts = new Vector3[circleVertexCount];
-                // Compute evenly spaced vertices around a circle.
+                // Evenly distribute vertices around the circle.
                 for (int i = 0; i < circleVertexCount; i++)
                 {
                     float angle = 2 * Mathf.PI * i / circleVertexCount;
@@ -873,13 +1047,15 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     /// <summary>
-    /// Returns a list of faces for the chosen solid.
-    /// For 3D solids, each face is represented as an array of vertex indices.
+    /// Returns a list of faces for the selected solid.
+    /// For 3D solids, each face is represented by an array of vertex indices.
     /// For 2D shapes, a single face (the entire polygon) is returned.
+    /// The 'secondary' flag returns alternate face definitions for the secondary wireframe.
     /// </summary>
     /// <param name="solidType">The selected Platonic solid.</param>
-    /// <returns>A list of arrays of indices, each representing a face.</returns>
-    private List<int[]> GetFaces(PlatonicSolid solidType)
+    /// <param name="secondary">If true, returns face definitions for the secondary wireframe.</param>
+    /// <returns>A list of integer arrays, each representing a face.</returns>
+    private List<int[]> GetFaces(PlatonicSolid solidType, Boolean secondary = false)
     {
         List<int[]> faces = new List<int[]>();
         switch (solidType)
@@ -909,51 +1085,100 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 faces.Add(new int[] { 3, 5, 0 });
                 break;
             case PlatonicSolid.Icosahedron:
-                faces.Add(new int[] { 0, 8, 4 });
-                faces.Add(new int[] { 0, 4, 6 });
-                faces.Add(new int[] { 0, 6, 10 });
-                faces.Add(new int[] { 0, 10, 2 });
-                faces.Add(new int[] { 0, 2, 8 });
-                faces.Add(new int[] { 8, 2, 5 });
-                faces.Add(new int[] { 8, 5, 9 });
-                faces.Add(new int[] { 8, 9, 4 });
-                faces.Add(new int[] { 4, 9, 1 });
-                faces.Add(new int[] { 4, 1, 6 });
-                faces.Add(new int[] { 6, 1, 11 });
-                faces.Add(new int[] { 6, 11, 10 });
-                faces.Add(new int[] { 10, 11, 3 });
-                faces.Add(new int[] { 10, 3, 2 });
-                faces.Add(new int[] { 2, 3, 5 });
-                faces.Add(new int[] { 5, 3, 7 });
-                faces.Add(new int[] { 5, 7, 9 });
-                faces.Add(new int[] { 9, 7, 1 });
-                faces.Add(new int[] { 1, 7, 11 });
-                faces.Add(new int[] { 11, 7, 3 });
+                if (!secondary)
+                {
+                    faces.Add(new int[] { 0, 8, 4 });
+                    faces.Add(new int[] { 0, 4, 6 });
+                    faces.Add(new int[] { 0, 6, 10 });
+                    faces.Add(new int[] { 0, 10, 2 });
+                    faces.Add(new int[] { 0, 2, 8 });
+                    faces.Add(new int[] { 8, 2, 5 });
+                    faces.Add(new int[] { 8, 5, 9 });
+                    faces.Add(new int[] { 8, 9, 4 });
+                    faces.Add(new int[] { 4, 9, 1 });
+                    faces.Add(new int[] { 4, 1, 6 });
+                    faces.Add(new int[] { 6, 1, 11 });
+                    faces.Add(new int[] { 6, 11, 10 });
+                    faces.Add(new int[] { 10, 11, 3 });
+                    faces.Add(new int[] { 10, 3, 2 });
+                    faces.Add(new int[] { 2, 3, 5 });
+                    faces.Add(new int[] { 5, 3, 7 });
+                    faces.Add(new int[] { 5, 7, 9 });
+                    faces.Add(new int[] { 9, 7, 1 });
+                    faces.Add(new int[] { 1, 7, 11 });
+                    faces.Add(new int[] { 11, 7, 3 });
+                }
+                else
+                {
+                    // Alternate face definitions for the secondary wireframe.
+                    faces.Add(new int[] { 0, 2, 8 });
+                    faces.Add(new int[] { 0, 4, 6 });
+                    faces.Add(new int[] { 0, 6, 10 });
+                    faces.Add(new int[] { 0, 8, 4 });
+                    faces.Add(new int[] { 0, 10, 2 });
+                    faces.Add(new int[] { 1, 3, 11 });
+                    faces.Add(new int[] { 1, 4, 9 });
+                    faces.Add(new int[] { 1, 6, 4 });
+                    faces.Add(new int[] { 1, 9, 3 });
+                    faces.Add(new int[] { 1, 11, 6 });
+                    faces.Add(new int[] { 2, 5, 8 });
+                    faces.Add(new int[] { 2, 7, 5 });
+                    faces.Add(new int[] { 2, 10, 7 });
+                    faces.Add(new int[] { 3, 5, 7 });
+                    faces.Add(new int[] { 3, 7, 11 });
+                    faces.Add(new int[] { 3, 9, 5 });
+                    faces.Add(new int[] { 4, 8, 9 });
+                    faces.Add(new int[] { 5, 9, 8 });
+                    faces.Add(new int[] { 6, 11, 10 });
+                    faces.Add(new int[] { 7, 10, 11 });
+                }
                 break;
             case PlatonicSolid.Dodecahedron:
-                faces.Add(new int[] { 0, 16, 2, 10, 8 });
-                faces.Add(new int[] { 0, 8, 4, 14, 12 });
-                faces.Add(new int[] { 0, 12, 1, 17, 16 });
-                faces.Add(new int[] { 1, 12, 14, 5, 19 });
-                faces.Add(new int[] { 1, 19, 7, 11, 17 });
-                faces.Add(new int[] { 2, 16, 17, 11, 6 });
-                faces.Add(new int[] { 2, 10, 3, 13, 6 });
-                faces.Add(new int[] { 3, 10, 8, 9, 13 });
-                faces.Add(new int[] { 4, 8, 9, 15, 14 });
-                faces.Add(new int[] { 5, 14, 15, 7, 19 });
-                faces.Add(new int[] { 6, 13, 9, 11, 7 });
-                faces.Add(new int[] { 17, 11, 9, 15, 19 });
+                if (!secondary)
+                {
+                    faces.Add(new int[] { 0, 16, 2, 10, 8 });
+                    faces.Add(new int[] { 0, 8, 4, 14, 12 });
+                    faces.Add(new int[] { 0, 12, 1, 17, 16 });
+                    faces.Add(new int[] { 1, 12, 14, 5, 19 });
+                    faces.Add(new int[] { 1, 19, 7, 11, 17 });
+                    faces.Add(new int[] { 2, 16, 17, 11, 6 });
+                    faces.Add(new int[] { 2, 10, 3, 13, 6 });
+                    faces.Add(new int[] { 3, 10, 8, 9, 13 });
+                    faces.Add(new int[] { 4, 8, 9, 15, 14 });
+                    faces.Add(new int[] { 5, 14, 15, 7, 19 });
+                    faces.Add(new int[] { 6, 13, 9, 11, 7 });
+                    faces.Add(new int[] { 17, 11, 9, 15, 19 });
+                }
+                else
+                {
+                    // Alternate face definitions for secondary wireframe.
+                    faces.Add(new int[] { 0, 8, 10, 2, 16 });
+                    faces.Add(new int[] { 0, 16, 18, 1, 12 });
+                    faces.Add(new int[] { 0, 12, 14, 3, 8 });
+                    faces.Add(new int[] { 1, 9, 5, 14, 12 });
+                    faces.Add(new int[] { 1, 18, 4, 11, 9 });
+                    faces.Add(new int[] { 2, 10, 6, 15, 13 });
+                    faces.Add(new int[] { 2, 13, 4, 18, 16 });
+                    faces.Add(new int[] { 3, 14, 5, 19, 17 });
+                    faces.Add(new int[] { 3, 17, 6, 10, 8 });
+                    faces.Add(new int[] { 4, 13, 15, 7, 11 });
+                    faces.Add(new int[] { 5, 9, 11, 7, 19 });
+                    faces.Add(new int[] { 6, 17, 19, 7, 15 });
+                }
                 break;
             case PlatonicSolid.Square:
                 faces.Add(new int[] { 0, 1, 2, 3 });
                 break;
             case PlatonicSolid.Circle:
-                // For the circle, use candidateSubdivision (clamped) as the number of vertices.
+                // For the Circle, determine the number of vertices based on candidateSubdivision (clamped).
                 int circleVertexCount = Mathf.Clamp(candidateSubdivision, 3, spherePointCount);
                 int[] indices = new int[circleVertexCount];
                 for (int i = 0; i < circleVertexCount; i++)
                     indices[i] = i;
                 faces.Add(indices);
+                // If drawing the secondary wireframe for Circle, reverse the order to flip the face.
+                if (secondary)
+                    System.Array.Reverse(indices);
                 break;
         }
         return faces;
