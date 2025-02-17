@@ -1,5 +1,5 @@
 ﻿#if UNITY_EDITOR
-using UnityEditor;
+using UnityEditor;  // Needed for drawing labels in the Unity Editor
 #endif
 using UnityEngine;
 using System.Collections.Generic;
@@ -12,18 +12,18 @@ using System;
 /// </summary>
 public enum PlatonicSolid
 {
-    Tetrahedron,
-    Cube,
-    Octahedron,
-    Icosahedron,
-    Dodecahedron,
-    Square,   // 2D: a single face (from a cube)
-    Circle    // 2D: a circle with evenly spaced vertices
+    Tetrahedron,  // A solid with 4 triangular faces
+    Cube,         // A solid with 6 square faces
+    Octahedron,   // A solid with 8 triangular faces
+    Icosahedron,  // A solid with 20 triangular faces
+    Dodecahedron, // A solid with 12 pentagonal faces
+    Square,       // A 2D shape: a single square face (from a cube)
+    Circle        // A 2D shape: a circle defined by evenly spaced vertices
 }
 
 /// <summary>
 /// Combined connection ordering enum. The first five values use legacy coordinate‑ordering;
-/// the remaining four produce a spiral ordering.
+/// the remaining four produce a spiral ordering using polar coordinates and a weighted proximity term.
 /// </summary>
 public enum ConnectionSetting
 {
@@ -41,13 +41,12 @@ public enum ConnectionSetting
 #region PlatonicSolidGizmo Class
 
 /// <summary>
-/// PlatonicSolidGizmo draws a wireframe of a chosen Platonic (or pseudo‑Platonic) solid,
-/// generates a cloud of sphere points over its faces, assigns letters to each sphere,
-/// processes an active letter chain (which can be obfuscated via several string manipulation methods)
-/// to filter and connect a chain of spheres, and draws connecting cylinders between them.
-/// When the "drawEndpointsOnly" option is enabled, only the first and last spheres are drawn
-/// (with the last replaced by a cube), but labels are drawn at every active point.
-/// A label below the solid (if enabled) displays the processed active filter.
+/// PlatonicSolidGizmo is a MonoBehaviour that draws a wireframe of a chosen Platonic (or pseudo‑Platonic) solid.
+/// It also generates a cloud of sphere points distributed over the solid’s faces,
+/// maps letters (from a specified alphabet) to these points, processes an input string (activeLettersFilter)
+/// via various obfuscation methods to filter the sphere chain, and draws connecting cylinders between
+/// the selected (active) sphere points. Optionally, only the endpoints are drawn, and labels are rendered.
+/// A label below the solid displays the processed active filter.
 /// </summary>
 public class PlatonicSolidGizmo : MonoBehaviour
 {
@@ -57,13 +56,13 @@ public class PlatonicSolidGizmo : MonoBehaviour
     [Tooltip("Choose which Platonic solid to display")]
     public PlatonicSolid solid = PlatonicSolid.Tetrahedron;
     [Tooltip("Uniform scale for the solid")]
-    public float scale = 1f;
+    public float scale = 1f;  // Scales all vertices of the solid
 
     [Header("Wireframe Options")]
     [Tooltip("Color of the primary wireframe of the Platonic solid")]
     public Color wireframeColor = Color.green;
     [Tooltip("Toggle primary wireframe drawing on or off")]
-    public bool drawWireframe = true;
+    public bool drawWireframe = true;  // Enable/disable drawing of the primary wireframe
 
     [Header("Sphere Cloud Settings")]
     [Tooltip("Exact total number of spheres to distribute over the faces")]
@@ -78,6 +77,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
     public Color startSphereColor = new Color(1f, 0f, 0f, 1f);
     [Tooltip("Color (with opacity) for the last sphere")]
     public Color endSphereColor = new Color(0f, 0f, 1f, 0.5f);
+    // The gradient is computed along the chain of sphere points, spanning either all or only active points.
 
     [Header("Letter Mapping Settings")]
     [Tooltip("If false, letters are assigned in A–Z order; if true, use alternate ordering")]
@@ -91,6 +91,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
     public string activeLettersFilter = "";
 
     [Header("Active Letters Obfuscation Settings")]
+    // These booleans enable various string transformation methods applied to the activeLettersFilter.
     [Tooltip("Toggle the 'Flip' method (reverses the word order) on or off")]
     public bool obfFlip = false;
     [Tooltip("Toggle the 'Rotate' method (rotates the words) on or off")]
@@ -135,7 +136,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     [Header("Connection Ordering Settings")]
     [Tooltip("Combined connection setting that determines how sphere points are ordered. " +
-             "Legacy options (TopToBottom, etc.) sort by coordinate; spiral options (ClockwiseOut/In, CounterclockwiseOut/In) produce a spiral." +
+             "Legacy options (TopToBottom, etc.) sort by coordinate; spiral options (ClockwiseOut/In, CounterclockwiseOut/In) produce a spiral. " +
              "The spiral ordering uses both angle and proximity. Adjust the proximity influence with the variable below.")]
     public ConnectionSetting connectionSetting = ConnectionSetting.TopToBottom;
     [Tooltip("Used only for legacy ordering options; ignored for spiral ordering")]
@@ -147,7 +148,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     #region Private Variables
 
-    // Cached cylinder mesh for drawing connecting cylinders.
+    // Cached cylinder mesh used for drawing connecting cylinders.
     private static Mesh cylinderMesh;
 
     #endregion
@@ -155,26 +156,33 @@ public class PlatonicSolidGizmo : MonoBehaviour
     #region OnDrawGizmos
 
     /// <summary>
-    /// Called by Unity to render the gizmos. This method draws (if enabled) the primary wireframe,
-    /// generates sphere points over the solid, orders them (using legacy or spiral ordering),
-    /// maps letters to each sphere, processes and applies the active letter chain (using obfuscation methods),
-    /// and draws the visible spheres (with labels if enabled) and connecting cylinders.
-    /// When drawEndpointsOnly is enabled, only the first and last spheres are drawn (with the last replaced by a cube),
-    /// but labels are drawn at every active point.
-    /// A label below the solid (if enabled) displays the processed active filter.
+    /// Unity calls OnDrawGizmos to render custom gizmos in the Editor.
+    /// This method:
+    /// 1. Retrieves and transforms the vertices of the chosen solid.
+    /// 2. Optionally draws the primary wireframe.
+    /// 3. Generates candidate sphere points on the solid's faces.
+    /// 4. Orders the sphere points based on the selected connection setting.
+    /// 5. Maps letters to each sphere point.
+    /// 6. Processes the active letter filter to create an "active chain" of points.
+    /// 7. Computes a gradient for the sphere colors.
+    /// 8. Draws the spheres (or only endpoints) and their labels.
+    /// 9. Draws connecting cylinders between consecutive visible sphere points.
+    /// 10. Draws a label below the solid with the processed active filter.
     /// </summary>
     private void OnDrawGizmos()
     {
-        // 1. Retrieve and transform vertices for the primary solid (scaled by "scale").
+        // 1. Retrieve and transform vertices for the primary solid.
         Vector3[] vertices = GetVertices(solid);
         if (vertices == null || vertices.Length == 0)
             return;
+        // Apply uniform scale and position offset.
         for (int i = 0; i < vertices.Length; i++)
             vertices[i] = transform.position + vertices[i] * scale;
 
-        // 2. Optionally draw the primary wireframe.
+        // 2. Draw the primary wireframe if enabled.
         if (drawWireframe)
         {
+            // Determine a tolerance based on the smallest edge length.
             float minEdgeLength = float.MaxValue;
             for (int i = 0; i < vertices.Length; i++)
             {
@@ -185,8 +193,9 @@ public class PlatonicSolidGizmo : MonoBehaviour
                         minEdgeLength = d;
                 }
             }
-            float tol = 0.01f;
+            float tol = 0.01f;  // Tolerance to decide if an edge should be drawn.
             Gizmos.color = wireframeColor;
+            // Draw lines between vertices that are approximately the smallest edge length apart.
             for (int i = 0; i < vertices.Length; i++)
             {
                 for (int j = i + 1; j < vertices.Length; j++)
@@ -200,30 +209,36 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
         // 3. Generate the final set of sphere points.
         List<Vector3> finalPoints = new List<Vector3>();
+        // If the sphere point count equals the number of vertices, use vertices directly.
         if (spherePointCount == vertices.Length)
         {
             finalPoints.AddRange(vertices);
         }
         else
         {
+            // Otherwise, generate candidate points based on face subdivisions.
             List<int[]> faces = GetFaces(solid);
             if (faces == null || faces.Count == 0)
                 return;
             List<Vector3> candidatePoints = new List<Vector3>();
+            // For each face, generate candidate points over its area.
             foreach (var faceIndices in faces)
             {
                 Vector3[] faceVerts = new Vector3[faceIndices.Length];
                 for (int i = 0; i < faceIndices.Length; i++)
                     faceVerts[i] = vertices[faceIndices[i]];
+                // Generate candidate points using a barycentric grid (fan‑triangulation method).
                 List<Vector3> faceCandidates = GenerateCandidatePointsOnPolygon(faceVerts, candidateSubdivision);
                 candidatePoints.AddRange(faceCandidates);
             }
+            // Remove points that are nearly duplicates.
             candidatePoints = RemoveDuplicatePoints(candidatePoints, 0.0001f);
             if (candidatePoints.Count < spherePointCount)
             {
                 Debug.LogWarning("Not enough candidate points generated. Increase candidateSubdivision.");
                 spherePointCount = candidatePoints.Count;
             }
+            // Use farthest point sampling to evenly distribute points.
             if (spherePointCount > vertices.Length)
                 finalPoints = FarthestPointSamplingWithPreselected(candidatePoints, spherePointCount, new List<Vector3>(vertices));
             else
@@ -232,13 +247,13 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
         // 4. Order the sphere points according to the connection setting.
         List<Vector3> orderedPoints = new List<Vector3>();
+        // Legacy coordinate-based ordering.
         if (connectionSetting == ConnectionSetting.TopToBottom ||
             connectionSetting == ConnectionSetting.BottomToTop ||
             connectionSetting == ConnectionSetting.LeftToRight ||
             connectionSetting == ConnectionSetting.RightToLeft ||
             connectionSetting == ConnectionSetting.Random)
         {
-            // Legacy ordering: coordinate‐based.
             orderedPoints = new List<Vector3>(finalPoints);
             const float orderTol = 0.001f;
             switch (connectionSetting)
@@ -260,6 +275,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                         (Mathf.Abs(a.x - b.x) < orderTol) ? a.y.CompareTo(b.y) : b.x.CompareTo(a.x));
                     break;
                 case ConnectionSetting.Random:
+                    // Randomly shuffle the points.
                     for (int i = 0; i < orderedPoints.Count; i++)
                     {
                         int rnd = UnityEngine.Random.Range(i, orderedPoints.Count);
@@ -269,6 +285,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     }
                     break;
             }
+            // Apply the starting vertex offset by rotating the list.
             int startIndex = Mathf.Clamp(startingVertexIndex, 0, orderedPoints.Count - 1);
             List<Vector3> rotatedPoints = new List<Vector3>();
             for (int i = startIndex; i < orderedPoints.Count; i++)
@@ -279,7 +296,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
         }
         else
         {
-            // Spiral ordering: use polar coordinates combined with a weighted proximity term.
+            // Spiral ordering using polar coordinates.
             Vector3 center = Vector3.zero;
             foreach (Vector3 pt in finalPoints)
                 center += pt;
@@ -287,6 +304,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
             float maxR = 0f;
             List<(Vector3 pt, float r, float theta)> polarList = new List<(Vector3, float, float)>();
+            // Compute polar coordinates for each candidate point relative to the center.
             foreach (Vector3 pt in finalPoints)
             {
                 Vector3 d = pt - center;
@@ -300,6 +318,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
             bool clockwise = (connectionSetting == ConnectionSetting.ClockwiseOut || connectionSetting == ConnectionSetting.ClockwiseIn);
             bool spiralOut = (connectionSetting == ConnectionSetting.ClockwiseOut || connectionSetting == ConnectionSetting.CounterclockwiseOut);
 
+            // Sort the points based on a combination of their angle and normalized radius.
             polarList.Sort((a, b) =>
             {
                 float angleA = clockwise ? (2 * Mathf.PI - a.theta) : a.theta;
@@ -313,7 +332,9 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 return keyA.CompareTo(keyB);
             });
 
+            // Create ordered list from the sorted polar coordinates.
             List<Vector3> sortedByAngle = polarList.Select(tuple => tuple.pt).ToList();
+            // Optionally rotate the order based on starting vertex index.
             if (startingVertexIndex > 0 && startingVertexIndex < sortedByAngle.Count)
             {
                 List<Vector3> rotated = new List<Vector3>();
@@ -326,15 +347,18 @@ public class PlatonicSolidGizmo : MonoBehaviour
             orderedPoints = sortedByAngle;
         }
 
-        // 5. Map letters to each ordered point.
+        // 5. Map letters to each ordered sphere point.
         int pointCount = orderedPoints.Count;
         string[] letterMapping = new string[pointCount];
+        // Initialize the mapping array with empty strings.
         for (int i = 0; i < pointCount; i++)
             letterMapping[i] = "";
+        // Select which alphabet to use and optionally remove vowels.
         string effectiveAlphabet = useAlternateAlphabet ? alphabetEQ : alphabetAZ;
         if (obfDisemvowel)
             effectiveAlphabet = effectiveAlphabet.Disemvowel();
         int effectiveAlphabetLength = effectiveAlphabet.Length;
+        // If there are more letters than points, wrap around; if fewer, distribute evenly.
         if (pointCount < effectiveAlphabetLength)
         {
             for (int i = 0; i < effectiveAlphabetLength; i++)
@@ -352,19 +376,22 @@ public class PlatonicSolidGizmo : MonoBehaviour
             }
         }
 
-        // 6. Process the activeLettersFilter using obfuscation methods.
+        // 6. Process the activeLettersFilter string through the obfuscation methods.
         string processedFilter = ProcessActiveLettersFilter(activeLettersFilter);
 
-        // 7. Build the active chain from the processed filter.
+        // 7. Build the active chain of sphere point indices based on the processed filter.
         List<int> activeChain = new List<int>();
         if (string.IsNullOrEmpty(processedFilter))
         {
+            // If no filter is provided, include all points.
             for (int i = 0; i < pointCount; i++)
                 activeChain.Add(i);
         }
         else
         {
             int currentIndex = 0;
+            // For each character in the processed filter, search through the ordered points (wrapping if needed)
+            // and add the index of the first sphere whose mapped letter contains the character.
             for (int f = 0; f < processedFilter.Length; f++)
             {
                 char c = processedFilter[f];
@@ -386,6 +413,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
         List<Color> visibleColors = new List<Color>();
         if (string.IsNullOrEmpty(activeLettersFilter))
         {
+            // Compute a color gradient over all points.
             Color[] sphereColors = new Color[pointCount];
             for (int i = 0; i < pointCount; i++)
             {
@@ -400,6 +428,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
         }
         else
         {
+            // When a filter is active, compute the gradient only for the active (visible) points.
             int visibleCount = activeChain.Count;
             for (int i = 0; i < visibleCount; i++)
             {
@@ -412,17 +441,19 @@ public class PlatonicSolidGizmo : MonoBehaviour
             }
         }
 
-        // 9. Draw the visible spheres (or endpoints) and draw labels at every active point.
+        // 9. Draw the sphere points and labels.
         for (int i = 0; i < visiblePoints.Count; i++)
         {
             float r = sphereRadius + (activeChain[i]) * sphereSizeIncrement;
             if (!drawEndpointsOnly)
             {
+                // Draw each sphere normally.
                 Gizmos.color = visibleColors[i];
                 Gizmos.DrawSphere(visiblePoints[i], r);
             }
             else
             {
+                // When endpoints only, draw only the first sphere as a sphere and the last as a cube.
                 if (i == 0)
                 {
                     Gizmos.color = visibleColors[i];
@@ -435,12 +466,13 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 }
             }
 #if UNITY_EDITOR
+            // Draw labels above each active sphere if labels are enabled.
             if (drawLabels)
                 Handles.Label(visiblePoints[i] + Vector3.up * (r * 1.5f), letterMapping[activeChain[i]]);
 #endif
         }
 
-        // 10. Draw connecting cylinders between consecutive visible points.
+        // 10. Draw connecting cylinders between consecutive visible sphere points.
         EnsureCylinderMesh();
         for (int i = 0; i < visiblePoints.Count - 1; i++)
         {
@@ -449,14 +481,16 @@ public class PlatonicSolidGizmo : MonoBehaviour
             Vector3 direction = p1 - p0;
             float distance = direction.magnitude;
             Vector3 mid = (p0 + p1) / 2f;
+            // Determine the rotation needed so the cylinder aligns between the two sphere centers.
             Quaternion rotation = Quaternion.FromToRotation(Vector3.up, direction);
+            // Scale the cylinder to the correct height (half the distance) and adjust its radius.
             Vector3 cylScale = new Vector3(cylinderRadius / 0.5f, distance / 2f, cylinderRadius / 0.5f);
             Gizmos.color = visibleColors[i + 1];
             Gizmos.DrawMesh(cylinderMesh, mid, rotation, cylScale);
         }
 
-        // 11. Draw a centered label below the solid displaying the processed active filter.
 #if UNITY_EDITOR
+        // 11. Draw a centered label below the solid that displays the processed active filter.
         if (drawLabels)
         {
             Vector3 min = vertices[0];
@@ -482,12 +516,14 @@ public class PlatonicSolidGizmo : MonoBehaviour
     /// The methods are applied in the following order:
     /// ToUpper (always), then optionally: Flip, Rotate, CutUp, RemoveWhitespace, Reverse, Shift, Disemvowel, Squeeze, Deduplicate, and Rearrange.
     /// </summary>
-    /// <param name="filter">The original filter string.</param>
+    /// <param name="filter">The original filter string input by the user.</param>
     /// <returns>The processed (obfuscated) string.</returns>
     private string ProcessActiveLettersFilter(string filter)
     {
+        // If the filter is empty, return it immediately.
         if (string.IsNullOrEmpty(filter))
             return filter;
+        // Always convert to uppercase.
         filter = filter.ToUpper();
         if (obfFlip)
             filter = filter.Flip();
@@ -518,21 +554,29 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     /// <summary>
     /// Caches a cylinder mesh based on Unity's built-in Cylinder primitive.
+    /// This mesh is used to draw the connecting cylinders.
     /// </summary>
     private static void EnsureCylinderMesh()
     {
         if (cylinderMesh == null)
         {
+            // Create a temporary cylinder primitive to access its mesh.
             GameObject temp = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             cylinderMesh = temp.GetComponent<MeshFilter>().sharedMesh;
+            // Immediately destroy the temporary GameObject.
             DestroyImmediate(temp);
         }
     }
 
     /// <summary>
-    /// Standard farthest point sampling. Selects exactly 'count' points from the candidate list,
-    /// starting with a candidate that is near one of the original vertices.
+    /// Standard farthest point sampling.
+    /// Selects exactly 'count' points from the candidate list by starting with one candidate (preferably near an original vertex)
+    /// and repeatedly selecting the candidate that is farthest from the already selected points.
     /// </summary>
+    /// <param name="candidates">List of candidate points.</param>
+    /// <param name="count">The desired number of points to select.</param>
+    /// <param name="originalVertices">The original solid vertices (used to seed the selection).</param>
+    /// <returns>A list of evenly distributed points.</returns>
     private List<Vector3> FarthestPointSampling(List<Vector3> candidates, int count, Vector3[] originalVertices)
     {
         List<Vector3> selected = new List<Vector3>();
@@ -541,6 +585,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
             return selected;
         float tol = 0.0001f;
         int initialIndex = -1;
+        // Try to find a candidate that is near one of the original vertices.
         for (int i = 0; i < n; i++)
         {
             foreach (Vector3 v in originalVertices)
@@ -554,12 +599,15 @@ public class PlatonicSolidGizmo : MonoBehaviour
             if (initialIndex != -1)
                 break;
         }
+        // If none is found, choose one at random.
         if (initialIndex == -1)
             initialIndex = UnityEngine.Random.Range(0, n);
         selected.Add(candidates[initialIndex]);
+        // Initialize the minimum distance array.
         float[] minDist = new float[n];
         for (int i = 0; i < n; i++)
             minDist[i] = Vector3.Distance(candidates[i], selected[0]);
+        // Iteratively add the farthest candidate.
         while (selected.Count < count)
         {
             int bestIndex = -1;
@@ -578,6 +626,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 break;
             Vector3 bestCandidate = candidates[bestIndex];
             selected.Add(bestCandidate);
+            // Update minimum distances based on the newly added candidate.
             for (int i = 0; i < n; i++)
             {
                 float d = Vector3.Distance(candidates[i], bestCandidate);
@@ -589,9 +638,13 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     /// <summary>
-    /// Modified farthest point sampling that always includes a preselected set of points (e.g. vertices)
-    /// and fills the remaining points from the candidate set.
+    /// Modified farthest point sampling that includes a preselected set of points (e.g. the original vertices)
+    /// and then fills the remaining points using farthest point sampling.
     /// </summary>
+    /// <param name="candidates">List of candidate points.</param>
+    /// <param name="count">Total desired number of points.</param>
+    /// <param name="preselected">Points that must be included in the final set.</param>
+    /// <returns>A list of points that includes the preselected ones plus additional evenly distributed points.</returns>
     private List<Vector3> FarthestPointSamplingWithPreselected(List<Vector3> candidates, int count, List<Vector3> preselected)
     {
         List<Vector3> selected = new List<Vector3>(preselected);
@@ -600,6 +653,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
             return selected;
         float tol = 0.0001f;
         float[] minDist = new float[n];
+        // Initialize distances based on the preselected points.
         for (int i = 0; i < n; i++)
         {
             float dmin = float.MaxValue;
@@ -611,6 +665,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
             }
             minDist[i] = dmin;
         }
+        // Add remaining points.
         while (selected.Count < count)
         {
             int bestIndex = -1;
@@ -649,19 +704,25 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     /// <summary>
-    /// Generates candidate points on a polygon by fan‑triangulating the polygon and creating a barycentric grid.
+    /// Generates candidate points on a polygon using fan‑triangulation.
+    /// The polygon is subdivided into triangles and a barycentric grid is generated on each triangle.
     /// </summary>
+    /// <param name="polyVerts">Array of vertices defining the polygon.</param>
+    /// <param name="subdivision">Number of subdivisions per triangle.</param>
+    /// <returns>A list of candidate points distributed over the polygon.</returns>
     private List<Vector3> GenerateCandidatePointsOnPolygon(Vector3[] polyVerts, int subdivision)
     {
         List<Vector3> points = new List<Vector3>();
         if (polyVerts.Length < 3)
             return points;
+        // A convex polygon with n vertices can be triangulated into n-2 triangles.
         int triangleCount = polyVerts.Length - 2;
         for (int i = 0; i < triangleCount; i++)
         {
             Vector3 A = polyVerts[0];
             Vector3 B = polyVerts[i + 1];
             Vector3 C = polyVerts[i + 2];
+            // For each triangle, loop over barycentric coordinates.
             for (int j = 0; j <= subdivision; j++)
             {
                 for (int k = 0; k <= subdivision - j; k++)
@@ -671,6 +732,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     float w = 1f - u - v;
                     if (w < 0)
                         continue;
+                    // Compute the point using barycentric coordinates.
                     Vector3 p = A * w + B * u + C * v;
                     points.Add(p);
                 }
@@ -680,8 +742,11 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     /// <summary>
-    /// Removes duplicate points from the list using the specified tolerance.
+    /// Removes duplicate points from a list based on a specified tolerance.
     /// </summary>
+    /// <param name="points">List of points.</param>
+    /// <param name="tolerance">Distance tolerance to consider points as duplicates.</param>
+    /// <returns>A list of unique points.</returns>
     private List<Vector3> RemoveDuplicatePoints(List<Vector3> points, float tolerance)
     {
         List<Vector3> unique = new List<Vector3>();
@@ -703,9 +768,11 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     /// <summary>
-    /// Returns the vertices for the chosen Platonic (or pseudo‑Platonic) solid.
+    /// Returns the vertices for the chosen solid.
     /// 3D solids are defined using symmetric coordinates; Square and Circle are defined in the XY plane.
     /// </summary>
+    /// <param name="solidType">The selected Platonic solid.</param>
+    /// <returns>An array of vertices for the solid.</returns>
     private Vector3[] GetVertices(PlatonicSolid solidType)
     {
         switch (solidType)
@@ -793,6 +860,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
             case PlatonicSolid.Circle:
                 int circleVertexCount = Mathf.Clamp(candidateSubdivision, 3, spherePointCount);
                 Vector3[] circleVerts = new Vector3[circleVertexCount];
+                // Compute evenly spaced vertices around a circle.
                 for (int i = 0; i < circleVertexCount; i++)
                 {
                     float angle = 2 * Mathf.PI * i / circleVertexCount;
@@ -807,8 +875,10 @@ public class PlatonicSolidGizmo : MonoBehaviour
     /// <summary>
     /// Returns a list of faces for the chosen solid.
     /// For 3D solids, each face is represented as an array of vertex indices.
-    /// For 2D shapes, a single face (the polygon) is returned.
+    /// For 2D shapes, a single face (the entire polygon) is returned.
     /// </summary>
+    /// <param name="solidType">The selected Platonic solid.</param>
+    /// <returns>A list of arrays of indices, each representing a face.</returns>
     private List<int[]> GetFaces(PlatonicSolid solidType)
     {
         List<int[]> faces = new List<int[]>();
@@ -878,6 +948,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 faces.Add(new int[] { 0, 1, 2, 3 });
                 break;
             case PlatonicSolid.Circle:
+                // For the circle, use candidateSubdivision (clamped) as the number of vertices.
                 int circleVertexCount = Mathf.Clamp(candidateSubdivision, 3, spherePointCount);
                 int[] indices = new int[circleVertexCount];
                 for (int i = 0; i < circleVertexCount; i++)
@@ -889,116 +960,6 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     #endregion
-}
-
-#endregion
-
-#region String Obfuscation Extensions
-
-/// <summary>
-/// A collection of extension methods to obfuscate a string. These methods are applied
-/// (in a fixed order) to the activeLettersFilter string so that you can type a sentence
-/// and have it obfuscated before mapping its letters to sphere points.
-/// </summary>
-public static class StringExtensions
-{
-    public static string Disemvowel(this string str)
-    {
-        return new string(str.Where(c => !"aeiouAEIOU".Contains(c)).ToArray());
-    }
-
-    public static string Squeeze(this string str)
-    {
-        StringBuilder sb = new StringBuilder();
-        foreach (char c in str)
-        {
-            if (sb.Length == 0 || sb[sb.Length - 1] != c)
-                sb.Append(c);
-        }
-        return sb.ToString();
-    }
-
-    public static string Deduplicate(this string str)
-    {
-        return new string(str.Distinct().ToArray());
-    }
-
-    public static string RemoveWhitespace(this string str)
-    {
-        StringBuilder sb = new StringBuilder();
-        foreach (char c in str)
-        {
-            if (!char.IsWhiteSpace(c))
-                sb.Append(c);
-        }
-        return sb.ToString();
-    }
-
-    public static string Rearrange(this string str)
-    {
-        char[] chars = str.ToCharArray();
-        System.Random rng = new System.Random();
-        for (int i = chars.Length - 1; i > 0; i--)
-        {
-            int j = rng.Next(i + 1);
-            (chars[i], chars[j]) = (chars[j], chars[i]);
-        }
-        return new string(chars);
-    }
-
-    public static string Shift(this string str, int? offset = null)
-    {
-        int actualOffset = offset ?? new System.Random().Next(26);
-        StringBuilder sb = new StringBuilder();
-        foreach (char c in str)
-        {
-            if (char.IsLetter(c))
-            {
-                char baseChar = char.IsUpper(c) ? 'A' : 'a';
-                int shifted = (c - baseChar + actualOffset) % 26;
-                sb.Append((char)(baseChar + shifted));
-            }
-            else
-                sb.Append(c);
-        }
-        return sb.ToString();
-    }
-
-    public static string Reverse(this string str)
-    {
-        char[] arr = str.ToCharArray();
-        Array.Reverse(arr);
-        return new string(arr);
-    }
-
-    public static string CutUp(this string str)
-    {
-        string[] words = str.Split(' ');
-        System.Random rng = new System.Random();
-        for (int i = words.Length - 1; i > 0; i--)
-        {
-            int j = rng.Next(i + 1);
-            (words[i], words[j]) = (words[j], words[i]);
-        }
-        return string.Join(" ", words);
-    }
-
-    public static string Rotate(this string str, int? offset = null)
-    {
-        string[] words = str.Split(' ');
-        int actualOffset = offset ?? new System.Random().Next(words.Length);
-        string[] rotated = new string[words.Length];
-        for (int i = 0; i < words.Length; i++)
-            rotated[(i + actualOffset) % words.Length] = words[i];
-        return string.Join(" ", rotated);
-    }
-
-    public static string Flip(this string str)
-    {
-        string[] words = str.Split(' ');
-        Array.Reverse(words);
-        return string.Join(" ", words);
-    }
 }
 
 #endregion
