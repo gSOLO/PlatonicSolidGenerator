@@ -234,7 +234,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
         if (drawSecondaryWireframe)
         {
             // Retrieve secondary vertices with independent scaling.
-            Vector3[] secondaryVertices = GetVertices(solid, true);
+            Vector3[] secondaryVertices = GetVertices(solid);
             if (secondaryVertices != null && secondaryVertices.Length > 0)
             {
                 // Apply secondary scale and position.
@@ -242,7 +242,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     secondaryVertices[i] = transform.position + secondaryVertices[i] * secondaryScale;
 
                 // Get the face definitions for the secondary wireframe.
-                List<int[]> solidFaces = GetFaces(solid, true);
+                List<int[]> solidFaces = GetFaces(solid);
 
                 // Generate a solid mesh (for face fill) from the secondary vertices.
                 Mesh solidMesh = GenerateSolidMesh(secondaryVertices, solidFaces);
@@ -882,12 +882,10 @@ public class PlatonicSolidGizmo : MonoBehaviour
     /// Returns the vertices for the selected solid.
     /// For 3D solids, vertices are defined symmetrically.
     /// For 2D shapes (Square and Circle), vertices lie in the XY plane.
-    /// The 'secondary' flag returns alternate vertex layouts for the secondary wireframe.
     /// </summary>
     /// <param name="solidType">The selected Platonic solid.</param>
-    /// <param name="secondary">If true, returns vertices for the secondary wireframe layout.</param>
     /// <returns>An array of vertices for the solid.</returns>
-    private Vector3[] GetVertices(PlatonicSolid solidType, Boolean secondary = false)
+    private Vector3[] GetVertices(PlatonicSolid solidType)
     {
         switch (solidType)
         {
@@ -922,31 +920,10 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     new Vector3( 0,  0, -1)
                 };
             case PlatonicSolid.Icosahedron:
-                if (!secondary)
                 {
-                    float phi = (1f + Mathf.Sqrt(5f)) / 2f;
-                    return new Vector3[]
-                    {
-                        new Vector3(0,  1,  phi),
-                        new Vector3(0,  1, -phi),
-                        new Vector3(0, -1,  phi),
-                        new Vector3(0, -1, -phi),
-                        new Vector3( 1,  phi, 0),
-                        new Vector3( 1, -phi, 0),
-                        new Vector3(-1,  phi, 0),
-                        new Vector3(-1, -phi, 0),
-                        new Vector3( phi, 0,  1),
-                        new Vector3( phi, 0, -1),
-                        new Vector3(-phi, 0,  1),
-                        new Vector3(-phi, 0, -1)
-                    };
-                }
-                else
-                {
-                    // Alternate layout for secondary wireframe.
                     float a = 1.0f;
                     float b = 0.0f;
-                    float c = (1f + Mathf.Sqrt(5f)) / 2f;
+                    float c = (1f + Mathf.Sqrt(5f)) / 2f; // phi
                     return new Vector3[]
                     {
                         new Vector3(+b, +a, +c),
@@ -966,40 +943,11 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     };
                 }
             case PlatonicSolid.Dodecahedron:
-                if (!secondary)
                 {
-                    float phiD = (1f + Mathf.Sqrt(5f)) / 2f;
-                    float invPhi = 1f / phiD;
-                    List<Vector3> verts = new List<Vector3>();
-                    verts.Add(new Vector3(1, 1, 1));
-                    verts.Add(new Vector3(1, 1, -1));
-                    verts.Add(new Vector3(1, -1, 1));
-                    verts.Add(new Vector3(1, -1, -1));
-                    verts.Add(new Vector3(-1, 1, 1));
-                    verts.Add(new Vector3(-1, 1, -1));
-                    verts.Add(new Vector3(-1, -1, 1));
-                    verts.Add(new Vector3(-1, -1, -1));
-                    verts.Add(new Vector3(0, invPhi, phiD));
-                    verts.Add(new Vector3(0, invPhi, -phiD));
-                    verts.Add(new Vector3(0, -invPhi, phiD));
-                    verts.Add(new Vector3(0, -invPhi, -invPhi));
-                    verts.Add(new Vector3(invPhi, phiD, 0));
-                    verts.Add(new Vector3(invPhi, -phiD, 0));
-                    verts.Add(new Vector3(-invPhi, phiD, 0));
-                    verts.Add(new Vector3(-invPhi, -phiD, 0));
-                    verts.Add(new Vector3(phiD, 0, invPhi));
-                    verts.Add(new Vector3(phiD, 0, -invPhi));
-                    verts.Add(new Vector3(-phiD, 0, invPhi));
-                    verts.Add(new Vector3(-phiD, 0, -invPhi));
-                    return verts.ToArray();
-                }
-                else
-                {
-                    // Alternate layout for secondary wireframe.
                     float a = 1.0f;
                     float b = 0.0f;
-                    float c = (1f + Mathf.Sqrt(5f)) / 2f;
-                    float d = 1f / c;
+                    float c = (1f + Mathf.Sqrt(5f)) / 2f; // phi
+                    float d = 1f / c; // invPhi
                     List<Vector3> verts = new List<Vector3>();
                     verts.Add(new Vector3(+a, +a, +a));
                     verts.Add(new Vector3(+a, +a, -a));
@@ -1055,12 +1003,10 @@ public class PlatonicSolidGizmo : MonoBehaviour
     /// Returns a list of faces for the selected solid.
     /// For 3D solids, each face is represented by an array of vertex indices.
     /// For 2D shapes, a single face (the entire polygon) is returned.
-    /// The 'secondary' flag returns alternate face definitions for the secondary wireframe.
     /// </summary>
     /// <param name="solidType">The selected Platonic solid.</param>
-    /// <param name="secondary">If true, returns face definitions for the secondary wireframe.</param>
     /// <returns>A list of integer arrays, each representing a face.</returns>
-    private List<int[]> GetFaces(PlatonicSolid solidType, Boolean secondary = false)
+    private List<int[]> GetFaces(PlatonicSolid solidType)
     {
         List<int[]> faces = new List<int[]>();
         switch (solidType)
@@ -1090,86 +1036,40 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 faces.Add(new int[] { 3, 5, 0 });
                 break;
             case PlatonicSolid.Icosahedron:
-                if (!secondary)
-                {
-                    faces.Add(new int[] { 0, 8, 4 });
-                    faces.Add(new int[] { 0, 4, 6 });
-                    faces.Add(new int[] { 0, 6, 10 });
-                    faces.Add(new int[] { 0, 10, 2 });
-                    faces.Add(new int[] { 0, 2, 8 });
-                    faces.Add(new int[] { 8, 2, 5 });
-                    faces.Add(new int[] { 8, 5, 9 });
-                    faces.Add(new int[] { 8, 9, 4 });
-                    faces.Add(new int[] { 4, 9, 1 });
-                    faces.Add(new int[] { 4, 1, 6 });
-                    faces.Add(new int[] { 6, 1, 11 });
-                    faces.Add(new int[] { 6, 11, 10 });
-                    faces.Add(new int[] { 10, 11, 3 });
-                    faces.Add(new int[] { 10, 3, 2 });
-                    faces.Add(new int[] { 2, 3, 5 });
-                    faces.Add(new int[] { 5, 3, 7 });
-                    faces.Add(new int[] { 5, 7, 9 });
-                    faces.Add(new int[] { 9, 7, 1 });
-                    faces.Add(new int[] { 1, 7, 11 });
-                    faces.Add(new int[] { 11, 7, 3 });
-                }
-                else
-                {
-                    // Alternate face definitions for the secondary wireframe.
-                    faces.Add(new int[] { 0, 2, 8 });
-                    faces.Add(new int[] { 0, 4, 6 });
-                    faces.Add(new int[] { 0, 6, 10 });
-                    faces.Add(new int[] { 0, 8, 4 });
-                    faces.Add(new int[] { 0, 10, 2 });
-                    faces.Add(new int[] { 1, 3, 11 });
-                    faces.Add(new int[] { 1, 4, 9 });
-                    faces.Add(new int[] { 1, 6, 4 });
-                    faces.Add(new int[] { 1, 9, 3 });
-                    faces.Add(new int[] { 1, 11, 6 });
-                    faces.Add(new int[] { 2, 5, 8 });
-                    faces.Add(new int[] { 2, 7, 5 });
-                    faces.Add(new int[] { 2, 10, 7 });
-                    faces.Add(new int[] { 3, 5, 7 });
-                    faces.Add(new int[] { 3, 7, 11 });
-                    faces.Add(new int[] { 3, 9, 5 });
-                    faces.Add(new int[] { 4, 8, 9 });
-                    faces.Add(new int[] { 5, 9, 8 });
-                    faces.Add(new int[] { 6, 11, 10 });
-                    faces.Add(new int[] { 7, 10, 11 });
-                }
+                faces.Add(new int[] { 0, 2, 8 });
+                faces.Add(new int[] { 0, 4, 6 });
+                faces.Add(new int[] { 0, 6, 10 });
+                faces.Add(new int[] { 0, 8, 4 });
+                faces.Add(new int[] { 0, 10, 2 });
+                faces.Add(new int[] { 1, 3, 11 });
+                faces.Add(new int[] { 1, 4, 9 });
+                faces.Add(new int[] { 1, 6, 4 });
+                faces.Add(new int[] { 1, 9, 3 });
+                faces.Add(new int[] { 1, 11, 6 });
+                faces.Add(new int[] { 2, 5, 8 });
+                faces.Add(new int[] { 2, 7, 5 });
+                faces.Add(new int[] { 2, 10, 7 });
+                faces.Add(new int[] { 3, 5, 7 });
+                faces.Add(new int[] { 3, 7, 11 });
+                faces.Add(new int[] { 3, 9, 5 });
+                faces.Add(new int[] { 4, 8, 9 });
+                faces.Add(new int[] { 5, 9, 8 });
+                faces.Add(new int[] { 6, 11, 10 });
+                faces.Add(new int[] { 7, 10, 11 });
                 break;
             case PlatonicSolid.Dodecahedron:
-                if (!secondary)
-                {
-                    faces.Add(new int[] { 0, 16, 2, 10, 8 });
-                    faces.Add(new int[] { 0, 8, 4, 14, 12 });
-                    faces.Add(new int[] { 0, 12, 1, 17, 16 });
-                    faces.Add(new int[] { 1, 12, 14, 5, 19 });
-                    faces.Add(new int[] { 1, 19, 7, 11, 17 });
-                    faces.Add(new int[] { 2, 16, 17, 11, 6 });
-                    faces.Add(new int[] { 2, 10, 3, 13, 6 });
-                    faces.Add(new int[] { 3, 10, 8, 9, 13 });
-                    faces.Add(new int[] { 4, 8, 9, 15, 14 });
-                    faces.Add(new int[] { 5, 14, 15, 7, 19 });
-                    faces.Add(new int[] { 6, 13, 9, 11, 7 });
-                    faces.Add(new int[] { 17, 11, 9, 15, 19 });
-                }
-                else
-                {
-                    // Alternate face definitions for secondary wireframe.
-                    faces.Add(new int[] { 0, 8, 10, 2, 16 });
-                    faces.Add(new int[] { 0, 16, 18, 1, 12 });
-                    faces.Add(new int[] { 0, 12, 14, 3, 8 });
-                    faces.Add(new int[] { 1, 9, 5, 14, 12 });
-                    faces.Add(new int[] { 1, 18, 4, 11, 9 });
-                    faces.Add(new int[] { 2, 10, 6, 15, 13 });
-                    faces.Add(new int[] { 2, 13, 4, 18, 16 });
-                    faces.Add(new int[] { 3, 14, 5, 19, 17 });
-                    faces.Add(new int[] { 3, 17, 6, 10, 8 });
-                    faces.Add(new int[] { 4, 13, 15, 7, 11 });
-                    faces.Add(new int[] { 5, 9, 11, 7, 19 });
-                    faces.Add(new int[] { 6, 17, 19, 7, 15 });
-                }
+                faces.Add(new int[] { 0, 8, 10, 2, 16 });
+                faces.Add(new int[] { 0, 16, 18, 1, 12 });
+                faces.Add(new int[] { 0, 12, 14, 3, 8 });
+                faces.Add(new int[] { 1, 9, 5, 14, 12 });
+                faces.Add(new int[] { 1, 18, 4, 11, 9 });
+                faces.Add(new int[] { 2, 10, 6, 15, 13 });
+                faces.Add(new int[] { 2, 13, 4, 18, 16 });
+                faces.Add(new int[] { 3, 14, 5, 19, 17 });
+                faces.Add(new int[] { 3, 17, 6, 10, 8 });
+                faces.Add(new int[] { 4, 13, 15, 7, 11 });
+                faces.Add(new int[] { 5, 9, 11, 7, 19 });
+                faces.Add(new int[] { 6, 17, 19, 7, 15 });
                 break;
             case PlatonicSolid.Square:
                 faces.Add(new int[] { 0, 1, 2, 3 });
