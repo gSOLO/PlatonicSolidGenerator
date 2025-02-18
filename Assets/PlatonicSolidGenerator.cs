@@ -42,8 +42,8 @@ public enum ConnectionSetting
 
 /// <summary>
 /// PlatonicSolidGizmo is a MonoBehaviour that renders a Platonic (or pseudo‑Platonic) solid in the Unity Editor.
-/// It draws a primary wireframe and a secondary wireframe, where the secondary wireframe
-/// is rendered as a filled mesh with independently specified face fill and edge colors.
+/// It draws a primary wireframe and a secondary wireframe, where the secondary wireframe is rendered as a filled mesh
+/// with independently specified face fill and edge colors (and for Square and Circle the mesh is made double‑sided).
 /// Additionally, it generates a cloud of sphere points on the solid's faces, maps letters to these points,
 /// processes an input string (activeLettersFilter) via various obfuscation methods, and draws connecting cylinders
 /// between the "active" sphere points. Labels can be drawn at each sphere and below the solid.
@@ -73,9 +73,9 @@ public class PlatonicSolidGizmo : MonoBehaviour
     [Tooltip("Uniform scale for the secondary wireframe (independent of the main solid scale)")]
     public float secondaryScale = 1.0f;  // Scale factor for the secondary wireframe
     [Tooltip("Fill color for the secondary solid faces")]
-    public Color secondaryFaceFillColor = new Color(1f, 1f, 1f, 0.5f);  // Face fill color
+    public Color secondaryFaceFillColor = new Color(1f, 1f, 1f, 0.5f);  // Fill color for secondary faces
     [Tooltip("Color for the secondary wireframe edges")]
-    public Color secondaryWireframeEdgeColor = Color.black;  // Edge (line) color for secondary wireframe
+    public Color secondaryWireframeEdgeColor = Color.black;  // Color for edge lines of the secondary wireframe
 
     // ----- Sphere Cloud Settings -----
     [Header("Sphere Cloud Settings")]
@@ -104,7 +104,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
     public string alphabetEQ = "ESIARNTOLCDUGPMHBYFVKWZXJQ";
     [Tooltip("Active letter chain. Type a sentence here which will be processed (via obfuscation methods) " +
              "to produce the chain of active letters. For example, 'AGPA' selects spheres with A, then G, then P, then A (even if letters repeat)")]
-    public string activeLettersFilter = "";  // User input for active chain filtering
+    public string activeLettersFilter = "";  // Input for active chain filtering
 
     // ----- Active Letters Obfuscation Settings -----
     [Header("Active Letters Obfuscation Settings")]
@@ -158,19 +158,19 @@ public class PlatonicSolidGizmo : MonoBehaviour
     // ----- Connection Ordering Settings -----
     [Header("Connection Ordering Settings")]
     [Tooltip("Combined connection setting that determines how sphere points are ordered. " +
-             "Legacy options (TopToBottom, etc.) sort by coordinate; spiral options (ClockwiseOut/In, CounterclockwiseOut/In) produce a spiral. " +
-             "The spiral ordering uses both angle and proximity. Adjust the proximity influence with the variable below.")]
+             "Legacy options sort by coordinate; spiral options produce a spiral using angle and proximity. " +
+             "For legacy ordering, the sorting now prefers to traverse front-to-back and left-to-right (or right-to-left) before moving vertically.")]
     public ConnectionSetting connectionSetting = ConnectionSetting.TopToBottom;
     [Tooltip("Used only for legacy ordering options; ignored for spiral ordering")]
     public int startingVertexIndex = 0;
-    [Tooltip("Weight factor (typically between 0 and 1) for the proximity term in spiral ordering. Lower values emphasize angle more.")]
+    [Tooltip("Weight factor for the proximity term in spiral ordering (typically between 0 and 1). Lower values emphasize angle more.")]
     public float spiralProximityWeight = 0.3f;
 
     #endregion
 
     #region Private Variables
 
-    // Cached cylinder mesh for drawing connecting cylinders.
+    // Cached cylinder mesh used for drawing connecting cylinders.
     private static Mesh cylinderMesh;
 
     #endregion
@@ -184,11 +184,11 @@ public class PlatonicSolidGizmo : MonoBehaviour
     /// 2. Draws the primary wireframe.
     /// 3. Draws the secondary wireframe (first filling faces, then drawing edge lines).
     /// 4. Generates candidate sphere points on the solid’s faces.
-    /// 5. Orders the sphere points based on the connection setting.
+    /// 5. Orders the sphere points based on the selected connection setting (with refined tie-breaking).
     /// 6. Maps letters to each sphere point.
     /// 7. Processes the active letter filter to build an active chain of sphere points.
     /// 8. Assigns a color gradient to the sphere points.
-    /// 9. Draws the sphere points (or endpoints only) and labels.
+    /// 9. Draws the sphere points (or endpoints only) with labels.
     /// 10. Draws connecting cylinders between consecutive visible sphere points.
     /// 11. Draws a label below the solid displaying the processed active filter.
     /// </summary>
@@ -233,7 +233,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
         // --- Step 3: Draw the secondary wireframe (filled faces + edge lines) ---
         if (drawSecondaryWireframe)
         {
-            // Retrieve secondary vertices with independent scaling.
+            // Retrieve secondary vertices (using same layout as primary).
             Vector3[] secondaryVertices = GetVertices(solid);
             if (secondaryVertices != null && secondaryVertices.Length > 0)
             {
@@ -244,7 +244,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                 // Get the face definitions for the secondary wireframe.
                 List<int[]> solidFaces = GetFaces(solid);
 
-                // Generate a solid mesh (for face fill) from the secondary vertices.
+                // Generate a solid mesh for face fill.
                 Mesh solidMesh = GenerateSolidMesh(secondaryVertices, solidFaces);
                 if (solidMesh != null)
                 {
@@ -257,7 +257,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     Gizmos.color = secondaryFaceFillColor;
                     Gizmos.DrawMesh(solidMesh);
                 }
-                // Draw the wireframe edges over the secondary mesh.
+                // Draw the edge lines over the secondary mesh.
                 Gizmos.color = secondaryWireframeEdgeColor;
                 foreach (var face in solidFaces)
                 {
@@ -317,24 +317,60 @@ public class PlatonicSolidGizmo : MonoBehaviour
         {
             // Legacy coordinate-based ordering.
             orderedPoints = new List<Vector3>(finalPoints);
-            const float orderTol = 0.001f;
+            // New custom comparators for legacy ordering:
             switch (connectionSetting)
             {
                 case ConnectionSetting.TopToBottom:
+                    // Primary: y descending; Secondary: z ascending (front to back); Tertiary: x ascending (left to right)
                     orderedPoints.Sort((a, b) =>
-                        (Mathf.Abs(a.y - b.y) < orderTol) ? a.x.CompareTo(b.x) : b.y.CompareTo(a.y));
+                    {
+                        int comp = b.y.CompareTo(a.y);
+                        if (comp != 0) return comp;
+                        comp = a.z.CompareTo(b.z);
+                        if (comp != 0) return comp;
+                        comp = a.x.CompareTo(b.x);
+                        if (comp != 0) return comp;
+                        return a.magnitude.CompareTo(b.magnitude);
+                    });
                     break;
                 case ConnectionSetting.BottomToTop:
+                    // Primary: y ascending; Secondary: z ascending; Tertiary: x descending (right to left)
                     orderedPoints.Sort((a, b) =>
-                        (Mathf.Abs(a.y - b.y) < orderTol) ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+                    {
+                        int comp = a.y.CompareTo(b.y);
+                        if (comp != 0) return comp;
+                        comp = a.z.CompareTo(b.z);
+                        if (comp != 0) return comp;
+                        comp = b.x.CompareTo(a.x);
+                        if (comp != 0) return comp;
+                        return a.magnitude.CompareTo(b.magnitude);
+                    });
                     break;
                 case ConnectionSetting.LeftToRight:
+                    // Primary: x ascending; Secondary: y descending (top first); Tertiary: z ascending (front first)
                     orderedPoints.Sort((a, b) =>
-                        (Mathf.Abs(a.x - b.x) < orderTol) ? a.y.CompareTo(b.y) : a.x.CompareTo(b.x));
+                    {
+                        int comp = a.x.CompareTo(b.x);
+                        if (comp != 0) return comp;
+                        comp = b.y.CompareTo(a.y);
+                        if (comp != 0) return comp;
+                        comp = a.z.CompareTo(b.z);
+                        if (comp != 0) return comp;
+                        return a.magnitude.CompareTo(b.magnitude);
+                    });
                     break;
                 case ConnectionSetting.RightToLeft:
+                    // Primary: x descending; Secondary: y descending (top first); Tertiary: z ascending (front first)
                     orderedPoints.Sort((a, b) =>
-                        (Mathf.Abs(a.x - b.x) < orderTol) ? a.y.CompareTo(b.y) : b.x.CompareTo(a.x));
+                    {
+                        int comp = b.x.CompareTo(a.x);
+                        if (comp != 0) return comp;
+                        comp = b.y.CompareTo(a.y);
+                        if (comp != 0) return comp;
+                        comp = a.z.CompareTo(b.z);
+                        if (comp != 0) return comp;
+                        return a.magnitude.CompareTo(b.magnitude);
+                    });
                     break;
                 case ConnectionSetting.Random:
                     // Random shuffle.
@@ -347,7 +383,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
                     }
                     break;
             }
-            // Rotate the ordered list based on startingVertexIndex.
+            // Apply starting vertex offset.
             int startIndex = Mathf.Clamp(startingVertexIndex, 0, orderedPoints.Count - 1);
             List<Vector3> rotatedPoints = new List<Vector3>();
             for (int i = startIndex; i < orderedPoints.Count; i++)
@@ -358,7 +394,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
         }
         else
         {
-            // Spiral ordering using polar coordinates.
+            // Spiral ordering (not modified in this update).
             Vector3 center = Vector3.zero;
             foreach (Vector3 pt in finalPoints)
                 center += pt;
@@ -559,7 +595,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     /// <summary>
     /// Processes the activeLettersFilter string by applying a series of obfuscation methods.
-    /// Methods are applied in a fixed order: ToUpper (always), then optionally:
+    /// The methods are applied in a fixed order: ToUpper (always), then optionally:
     /// Flip, Rotate, CutUp, RemoveWhitespace, Reverse, Shift, Disemvowel, Squeeze, Deduplicate, and Rearrange.
     /// </summary>
     /// <param name="filter">The original filter string input by the user.</param>
@@ -598,7 +634,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
     #region Sampling and Geometry Helpers
 
     /// <summary>
-    /// Caches a cylinder mesh based on Unity's built-in Cylinder primitive.
+    /// Ensures that the cylinder mesh is cached.
     /// Creates a temporary Cylinder object to obtain its mesh, then destroys it.
     /// </summary>
     private static void EnsureCylinderMesh()
@@ -615,8 +651,8 @@ public class PlatonicSolidGizmo : MonoBehaviour
     /// Generates a solid mesh for the secondary wireframe by fan‑triangulating each face.
     /// This mesh is used to fill the faces with a solid color.
     /// </summary>
-    /// <param name="vertices">Array of secondary vertices (transformed with secondaryScale and position).</param>
-    /// <param name="faces">List of faces (each face is defined by an array of vertex indices).</param>
+    /// <param name="vertices">Array of secondary vertices (already transformed with secondaryScale and position).</param>
+    /// <param name="faces">List of faces (each defined by an array of vertex indices).</param>
     /// <returns>A Mesh representing the secondary solid's faces.</returns>
     private Mesh GenerateSolidMesh(Vector3[] vertices, List<int[]> faces)
     {
@@ -651,7 +687,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     /// <summary>
     /// Sorts the vertex indices of a face into a consistent (e.g., counterclockwise) winding order.
-    /// Computes the face centroid and a representative normal, then sorts based on the angle between
+    /// Computes the face centroid and a representative normal, then sorts the indices based on the angle between
     /// a reference direction (from the centroid to the first vertex) and each vertex's direction.
     /// </summary>
     /// <param name="face">Array of vertex indices defining the face.</param>
@@ -691,8 +727,8 @@ public class PlatonicSolidGizmo : MonoBehaviour
 
     /// <summary>
     /// Standard farthest point sampling.
-    /// Selects 'count' points from a list of candidate points by iteratively choosing the candidate farthest
-    /// from the already selected points. Starts with a candidate near an original vertex, if possible.
+    /// Iteratively selects 'count' points from the candidate list by choosing the candidate farthest
+    /// from the already selected points, starting with one near an original vertex if possible.
     /// </summary>
     /// <param name="candidates">List of candidate points.</param>
     /// <param name="count">Desired number of points.</param>
@@ -754,7 +790,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
     }
 
     /// <summary>
-    /// Modified farthest point sampling that includes a preselected set of points,
+    /// Modified farthest point sampling that includes a set of preselected points,
     /// then fills in additional points using farthest point sampling.
     /// </summary>
     /// <param name="candidates">List of candidate points.</param>
@@ -1102,7 +1138,7 @@ public class PlatonicSolidGizmo : MonoBehaviour
         {
             doubleTriangles[i] = originalTriangles[i];
         }
-        // For each triangle, add a reversed triangle.
+        // Append reversed triangles.
         for (int i = 0; i < triangleCount; i += 3)
         {
             doubleTriangles[triangleCount + i] = originalTriangles[i];
@@ -1114,8 +1150,8 @@ public class PlatonicSolidGizmo : MonoBehaviour
         return mesh;
     }
 
-
     #endregion
+
 }
 
 #endregion
